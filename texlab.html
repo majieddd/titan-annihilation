@@ -1,0 +1,33 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Texture lab</title>
+<style>body{margin:0;background:#111;color:#ddd;font:12px monospace}#gl{display:block;width:100vw;height:100vh}#stats{position:fixed;left:8px;top:8px;background:rgba(0,0,0,.6);padding:6px 8px;white-space:pre}</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+</head><body><canvas id="gl"></canvas><div id="stats"></div>
+<script type="module">
+import * as THREE from 'three';
+import { detailTexture, genStats, setTextureSize } from './src/textures.js';
+const params = new URLSearchParams(location.search); const size = parseInt(params.get('size') || '768', 10); setTextureSize(size);
+const kinds = ['rock', 'grass', 'sand', 'snow', 'dust', 'ice', 'crust', 'panel'];
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gl'), antialias: true }); renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight, false);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x151a20);
+const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 100); camera.position.set(0, 0, 9.5);
+const sun = new THREE.DirectionalLight(0xfff2e0, 3.0); sun.position.set(3, 4, 5); scene.add(sun); scene.add(new THREE.HemisphereLight(0x88aaff, 0x332211, 0.5));
+const t0 = performance.now();
+const texs = kinds.map((k) => detailTexture(k, size));
+const total = performance.now() - t0;
+const geo = new THREE.PlaneGeometry(2.3, 2.3, 1, 1);
+kinds.forEach((k, i) => {
+  const t = texs[i]; const tile = k === 'panel' ? 1 : 1.5; t.map.repeat.set(tile, tile); t.normal.repeat.set(tile, tile);
+  const m = new THREE.MeshStandardMaterial({ map: t.map, normalMap: t.normal, roughness: 0.85, metalness: k === 'panel' ? 0.5 : 0.0 });
+  m.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('diffuseColor *= sampledDiffuseColor;', 'diffuseColor.rgb *= sampledDiffuseColor.rgb;').replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = (texture2D(normalMap, vNormalMapUv).a - 0.3) / 0.7;'); };
+  m.customProgramCacheKey = () => 'lab';
+  const mesh = new THREE.Mesh(geo, m); mesh.position.set((i % 4) * 2.6 - 3.9, i < 4 ? 1.4 : -1.4, 0); scene.add(mesh);
+});
+document.getElementById('stats').textContent = `size ${size}\n` + kinds.map((k) => `${k.padEnd(6)} ${genStats[k + size].toFixed(0)} ms`).join('\n') + `\ntotal ${total.toFixed(0)} ms`;
+let ang = 0; window.__lab = { render: () => { fit(); renderer.render(scene, camera); return renderer.info.render; }, scene, renderer, texs, THREE, camera };
+function fit() { const w = innerWidth || 1280, h = innerHeight || 720; if (renderer.domElement.width !== Math.floor(w * devicePixelRatio)) { renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); } }
+fit(); addEventListener('resize', fit);
+function loop() { requestAnimationFrame(loop); fit(); ang += 0.01; sun.position.set(Math.cos(ang) * 5, 4, Math.sin(ang) * 5 + 3); renderer.render(scene, camera); }
+loop();
+</script></body></html>
