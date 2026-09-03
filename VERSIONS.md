@@ -4,6 +4,9 @@ Standalone builds of each version live in `versions/` (double-click to play; nee
 The published artifact keeps its own version picker as well (labels match the entries below).
 The in-game menu shows the version number under the title.
 
+## v3.4.2 — 2026-09-03 — Metal spot pads lit per planet
+- The metal-spot pads were one shared instanced mesh, so they could only carry one sun direction and pads on every planet except the focused one were lit from the wrong side. Each planet now gets its own pad mesh bound to its own sun, alongside the atmosphere and art style it already took. The glow rings stay a single mesh because they are unlit additive sprites.
+
 ## v3.4.1 — 2026-09-03 — Audit pass: 23 verified defects fixed
 A multi-agent review of the whole codebase found 31 candidate defects; 23 survived adversarial verification and are fixed here.
 

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { STYLE_U } from './style.js';
-import { injectFog } from './planet.js';
+import { injectFog, injectSun } from './planet.js';
 import { frameQuat, anyTangent, clamp, lerp } from './util.js';
 
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
@@ -189,15 +189,29 @@ export class Effects {
   }
   upAt(p, out) { const c = this.centerFor(p.x, p.y, p.z); return out.copy(p).sub(c).normalize(); }
   buildSpotPads() {
+    // One pad mesh PER PLANET. The pads are lit surfaces, and each planet faces its own star, so a
+    // single shared mesh could only carry one sun direction — pads on every other planet were lit
+    // from the focused planet's sun. The glow rings stay one mesh: they are unlit additive sprites.
     let n = 0; for (const p of this.planets) n += p.spots.length;
-    const pad = new THREE.InstancedMesh(new THREE.CylinderGeometry(2.3, 2.6, 0.5, 6), this.atmoU ? injectFog(new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.7, metalness: 0.5 }), this.atmoU, 'fx_pad') : new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.7, metalness: 0.5 }), n);
-    const ring = new THREE.InstancedMesh(new THREE.TorusGeometry(1.7, 0.12, 6, 24).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.25, 0.9, 1.2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), n);
-    pad.receiveShadow = true; pad.castShadow = true; let i = 0;
-    for (const p of this.planets) for (const s of p.spots) {
-      frameQuat(s.dir, anyTangent(s.dir, _t), _q); _v.copy(s.pos).addScaledVector(s.dir, 0.1); _s.set(1, 1, 1); _m.compose(_v, _q, _s); pad.setMatrixAt(i, _m);
-      _v.copy(s.pos).addScaledVector(s.dir, 0.42); _m.compose(_v, _q, _s); ring.setMatrixAt(i, _m); i++;
+    const padGeo = new THREE.CylinderGeometry(2.3, 2.6, 0.5, 6);
+    this.spotPads = [];
+    for (const p of this.planets) {
+      if (!p.spots.length) continue;
+      const mat = new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.7, metalness: 0.5 });
+      injectSun(mat, p.uniforms.uSunView, 'fx_pad');
+      if (this.atmoU) injectFog(mat, this.atmoU, 'fx_pad_sun');
+      const pad = new THREE.InstancedMesh(padGeo, mat, p.spots.length);
+      pad.receiveShadow = true; pad.castShadow = true; pad.frustumCulled = false;
+      let j = 0;
+      for (const s of p.spots) { frameQuat(s.dir, anyTangent(s.dir, _t), _q); _v.copy(s.pos).addScaledVector(s.dir, 0.1); _s.set(1, 1, 1); _m.compose(_v, _q, _s); pad.setMatrixAt(j++, _m); }
+      pad.instanceMatrix.needsUpdate = true;
+      this.spotPads.push(pad); this.scene.add(pad);
     }
-    this.spotPads = pad; this.spotRings = ring; this.scene.add(pad, ring);
+    const ring = new THREE.InstancedMesh(new THREE.TorusGeometry(1.7, 0.12, 6, 24).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.25, 0.9, 1.2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), n);
+    let i = 0;
+    for (const p of this.planets) for (const s of p.spots) { frameQuat(s.dir, anyTangent(s.dir, _t), _q); _v.copy(s.pos).addScaledVector(s.dir, 0.42); _s.set(1, 1, 1); _m.compose(_v, _q, _s); ring.setMatrixAt(i++, _m); }
+    ring.instanceMatrix.needsUpdate = true;
+    this.spotRings = ring; this.scene.add(ring);
   }
   setViewport(w, h) { this.icons.uniforms.uRes.value.set(w, h); this.bars.uniforms.uRes.value.set(w, h); }
   /** Free every GPU resource. A world rebuild drops the whole Effects instance, and switching art
@@ -206,7 +220,7 @@ export class Effects {
   dispose() {
     const kill = (m) => { if (!m) return; if (m.geometry) m.geometry.dispose(); const mats = Array.isArray(m.material) ? m.material : [m.material]; for (const mat of mats) { if (!mat) continue; for (const k of ['map', 'alphaMap', 'normalMap']) if (mat[k] && mat[k].dispose) mat[k].dispose(); if (mat.uniforms) for (const u of Object.values(mat.uniforms)) { const v = u && u.value; if (v && v.isTexture && v.dispose) v.dispose(); } mat.dispose(); } if (m.parent) m.parent.remove(m); };
     for (const p of [this.sparks, this.glow, this.smoke, this.beams, this.rings, this.bolts, this.shells, this.missiles, this.bombs, this.selRings, this.rangeRings, this.decals, this.icons, this.bars]) kill(p && p.mesh);
-    kill(this.spotPads); kill(this.spotRings);
+    for (const pad of this.spotPads || []) kill(pad); kill(this.spotRings);
   }
   // ---- spawners ----
   sparkBurst(p, n, count, speed, life, size, col, opts = {}) {
