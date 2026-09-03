@@ -35,7 +35,50 @@ export const STYLE_U = {
   uStRimColor: { value: new THREE.Vector3(1, 0.2, 0.8) },
   uStFxGain: { value: 1 },         // particle brightness
   uStFxTint: { value: new THREE.Vector3(1, 1, 1) },
+  // Ported painted-ramp lighting (see STYLE_RAMP_GLSL). Packed to keep the uniform count down:
+  //  A = (bands, rampGamma, facetJitter, shadowLift)
+  //  B = (bandCap, shadowBand, shadowEdge, shadowSoft)
+  //  C = (shadowDepth, ambient, specStrength, specPower)
+  //  D = (rimStrength, rimPower, toothStrength, toothScale)
+  uStRamp: { value: 0 },
+  uStRampA: { value: new THREE.Vector4(4, 1.28, 0.19, 0.24) },
+  uStRampB: { value: new THREE.Vector4(1, 0.16, 0.30, 0.30) },
+  uStRampC: { value: new THREE.Vector4(0.30, 0.30, 0.46, 14) },
+  uStRampD: { value: new THREE.Vector4(0.85, 3.4, 0.46, 0.42) },
+  uStLightCol: { value: new THREE.Vector3(1, 1, 1) },
+  uStShadowCol: { value: new THREE.Vector3(0.05, 0.03, 0.12) },
+  uStAmbSky: { value: new THREE.Vector3(0.2, 0.25, 0.45) },
+  uStAmbGround: { value: new THREE.Vector3(0.1, 0.08, 0.18) },
+  uStAlbTint: { value: new THREE.Vector3(1, 1, 1) },
+  uStAlbMix: { value: 0 },
 };
+
+/** hsl -> rgb, matching the reference palette builder */
+function hsl2rgb(h, s, l) {
+  h = ((h % 1) + 1) % 1;
+  const f = (n) => { const k = (n + h * 12) % 12; const a = s * Math.min(l, 1 - l); return l - a * Math.max(-1, Math.min(Math.min(k - 3, 9 - k), 1)); };
+  return [f(0), f(8), f(4)];
+}
+function rgb2hue(hex) {
+  const r = ((hex >> 16) & 255) / 255, g = ((hex >> 8) & 255) / 255, b = (hex & 255) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  if (d < 1e-6) return 0;
+  let h = mx === r ? ((g - b) / d) % 6 : (mx === g ? (b - r) / d + 2 : (r - g) / d + 4);
+  return ((h / 6) % 1 + 1) % 1;
+}
+/** The reference derives its whole palette from one key colour and a shadow hue: shadows are the
+    key dragged toward the void hue and crushed, never neutral; the rim is the key at full
+    saturation; ambient is a hued sky/ground pair a little off the shadow hue. */
+export function derivePalette(keyHex, shadowHue, opts = {}) {
+  const h = rgb2hue(keyHex);
+  return {
+    light: hsl2rgb(h + (opts.lightWarm !== undefined ? opts.lightWarm : 0.06), 0.38, 0.90),
+    rim: hsl2rgb(h + (opts.rimShift || 0), 1.0, 0.66),
+    shadow: hsl2rgb(shadowHue, 0.62, 0.075),
+    ambSky: hsl2rgb(shadowHue - 0.06, 0.58, 0.30),
+    ambGround: hsl2rgb(shadowHue + 0.05, 0.62, opts.groundL !== undefined ? opts.groundL : 0.17),
+  };
+}
 
 export const STYLE_GLSL = `
 uniform float uStLod, uStNormal, uStPoster, uStSat, uStBands, uStSoft, uStKey, uStAmbient, uStSpec, uStHatch, uStHalftone, uStOutline, uStClay, uStFaction, uStTime, uStDebug, uStTooth, uStJitter, uStRim, uStTile, uStFlat; uniform vec3 uStShadowTint, uStLitTint, uStRimColor;
@@ -47,6 +90,24 @@ vec3 stSat(vec3 c, float s) { float l = stLum(c); return max(vec3(0.0), mix(vec3
 float stBand(float x, float bands, float soft) { float b = x * bands; float f = fract(b); float s = smoothstep(0.5 - soft, 0.5 + soft, f); return clamp((floor(b) + s) / bands, 0.0, 1.0); }
 float stHatchPat(vec2 fc, float spacing, float dir) { float a = (fc.x + dir * fc.y) / spacing; return step(0.45, fract(a)); }
 float stDotPat(vec2 fc, float spacing, float amt) { vec2 p = mat2(0.7071, 0.7071, -0.7071, 0.7071) * fc; vec2 g = fract(p / spacing) - 0.5; float d = length(g) * 2.0; return 1.0 - smoothstep(amt - 0.15, amt + 0.15, d); }
+uniform float uStRamp, uStAlbMix; uniform vec4 uStRampA, uStRampB, uStRampC, uStRampD; uniform vec3 uStLightCol, uStShadowCol, uStAmbSky, uStAmbGround, uStAlbTint;
+// Wrap the lambert term into 0..1 instead of clamping it, so the dark side keeps a readable value
+// and the terminator becomes a wide band; then quantise it, offsetting the band boundary per facet
+// so two nearly-coplanar faces land on different steps and the result reads as knife strokes.
+float stPosterise(float ndl, float seed, float bands, float gamma, float jit) {
+  float t = pow(clamp(ndl * 0.5 + 0.5, 0.0, 1.0), gamma);
+  t = clamp(t + (seed - 0.5) * jit, 0.0, 0.9999);
+  return floor(t * bands) / max(1.0, bands - 1.0);
+}
+// Three discrete stops. The lit stop stays near the albedo (light MULTIPLIES colour rather than
+// marching toward white) so a scene still reads as its own colour; the deep stop is nearly pure
+// hued shadow, which is what carries the drawing.
+vec3 stRampColor(float q, vec3 albedo, float lift) {
+  vec3 deep = mix(uStShadowCol, albedo * 0.24, lift);
+  vec3 mid  = albedo * mix(vec3(1.0), uStLightCol * 1.5, 0.35) * 0.80;
+  vec3 lite = albedo * mix(vec3(1.0), uStLightCol * 1.6, 0.55) * 1.34;
+  return q < 0.5 ? mix(deep, mid, q * 2.0) : mix(mid, lite, (q - 0.5) * 2.0);
+}
 `;
 
 /** inserted before <opaque_fragment> in every lit material: restyles the physically computed lighting */
@@ -63,7 +124,46 @@ export const STYLE_LIGHT_GLSL = `
   #ifdef ST_HAS_TEAM
   stTeam = vInst.z;
   #endif
-  if (uStBands > 0.5) {
+  if (uStRamp > 0.5) {
+    // Painted ramp, ported from the reference build. Everything is done in world space so it works
+    // for terrain, props and units alike: uAtSun and uAtC come from the atmosphere block and vAtW
+    // from the same injection, and the facet normal comes from screen-space derivatives so the
+    // per-facet seed is stable (no crawling).
+    vec3 nW = normalize((vec4(normal, 0.0) * viewMatrix).xyz);
+    vec3 lW = normalize(uAtSun);
+    vec3 vW2 = normalize(cameraPosition - vAtW);
+    vec3 upW = normalize(vAtW - uAtC);
+    vec3 fnW = normalize(cross(dFdx(vAtW), dFdy(vAtW))); if (dot(fnW, nW) < 0.0) fnW = -fnW;
+    float seed = stHash3(fnW * 11.0 + floor(vAtW * 0.7));
+    // The reference paints every surface from its faction palette. Keep the photographic albedo's
+    // luminance structure but pull its hue onto the palette, or the ramp sits on green grass.
+    vec3 alb = mix(stAlb, uStAlbTint * (0.35 + 0.65 * stAlbL * 2.2), uStAlbMix);
+    float ndl = dot(nW, lW);
+    // three has already folded the shadow into directDiffuse; divide the lambert term back out.
+    float shv = clamp(stDL / max(ndl, 0.02), 0.0, 1.0);
+    float form = min(stPosterise(ndl, seed, uStRampA.x, uStRampA.y, uStRampA.z), uStRampB.x);
+    vec3 litC = stRampColor(form, alb, uStRampA.w);
+    vec3 shdC = stRampColor(min(form, uStRampB.y), alb, uStRampA.w);
+    float shadMask = smoothstep(uStRampB.z, uStRampB.z + uStRampB.w, shv);
+    vec3 col = mix(shdC, litC, shadMask);
+    float hemi = dot(nW, upW) * 0.5 + 0.5;
+    col += alb * mix(uStAmbGround, uStAmbSky, hemi) * uStRampC.y;
+    float tooth = stNoise3(vAtW * uStRampD.w) * 0.65 + stNoise3(vAtW * uStRampD.w * 3.7) * 0.35;
+    col *= 1.0 + (tooth - 0.5) * uStRampD.z;
+    // A hard-stepped specular: the catch-light on the ridge of a knife stroke, not a smooth lobe.
+    vec3 hW = normalize(lW + vW2);
+    float sp = pow(max(dot(nW, hW), 0.0), uStRampC.w);
+    sp = step(0.10, sp) * (0.55 + 0.45 * step(0.40, sp));
+    col += uStLightCol * sp * uStRampC.z * shadMask;
+    float fres = pow(1.0 - clamp(dot(nW, vW2), 0.0, 1.0), uStRampD.y);
+    float rimSide = clamp(ndl * 0.5 + 0.65, 0.0, 1.0);
+    vec3 rc = uStRimColor;
+    #ifdef ST_HAS_TEAM
+    rc = mix(uStRimColor, vTeamColor, 0.75);
+    #endif
+    col += rc * fres * rimSide * uStRampD.x * mix(0.35, 1.0, shadMask);
+    outgoingLight = col + totalEmissiveRadiance;
+  } else if (uStBands > 0.5) {
     // toon: lift low sun angles into the lit band, keep the shadow side a tinted ~45% of the key light
     float stJit = uStJitter > 0.0 ? (stHash3(floor(vAtW * 0.45)) - 0.5) * uStJitter : 0.0;
     float q = stBand(clamp(pow(stDL, 0.6) + stJit, 0.0, 1.0), uStBands, uStSoft);
@@ -152,20 +252,24 @@ export const STYLES = [
       grade: { sat: 1.15, con: 1.12, vig: 0.3, sharp: 0.4, ca: 0, grain: 0.03, poster: 0, paper: 0.1, shadowTint: V(0.96, 0.97, 1.03), highTint: V(1.03, 1.0, 0.97) } },
   },
   {
-    id: 'reliquary', name: 'Reliquary', hint: 'From Cosmic Conquest: Reliquary — painted cutscene illustration: violet-hued shadows, band boundaries jittered per cell into knife strokes, faction-neon rim light, wet posterised specular, paint tooth, ink before bloom, canvas grain.',
-    mat: { lod: 4, normal: 0.1, poster: 0, sat: 1.24, bands: 3, soft: 0.03, ambient: 1.1, spec: 0.9, hatch: 0, halftone: 0.6, outline: 0.25, clay: 0, faction: 0, tooth: 0.35, jitter: 0.5, rim: 0.85, rimColor: V(1.0, 0.18, 0.84), tile: 0, flat: 0, fxGain: 0.55, fxTint: V(0.9, 0.75, 1.0), shadowTint: V(0.5, 0.36, 1.0), litTint: V(1.06, 0.96, 1.02) },
-    light: { sun: 3.2, sunColor: 0xffe6ff, hemi: 0.6, env: 0.6, fill: 0.45, fillColor: 0x8b5cf6 },
-    atmo: { aerial: 1.2, sunI: 0.75 },
-    post: { tone: 'aces', exposure: 1.0, gtao: false, bloom: [0.6, 0.6, 0.6], edge: { thick: 1.8, depthT: 0.05, normalT: 0.45, color: V(0.06, 0.02, 0.12), strength: 0.95, boil: 0 }, halftone: null, tilt: null,
-      grade: { sat: 1.1, con: 1.1, vig: 0.54, sharp: 0, ca: 0.012, grain: 0.042, poster: 0, paper: 0.2, shadowTint: V(0.62, 0.48, 1.15), highTint: V(1.08, 0.94, 1.1) } },
+    id: 'reliquary', name: 'Reliquary', hint: 'Ported from Cosmic Conquest: Reliquary — wrap-lit N.L posterised into four bands with the boundary jittered per facet, a three-stop hued ramp whose shadows are violet rather than black, hemispheric ambient, paint tooth, a hard-stepped wet specular and a neon rim, on flat-shaded low-poly.',
+    mat: { lod: 8, normal: 0, poster: 0, sat: 1.0, bands: 0, soft: 0.04, ambient: 1, spec: 1, hatch: 0, halftone: 0, outline: 0, clay: 0, faction: 0, tooth: 0, jitter: 0, rim: 0, rimColor: V(1, 0.4, 0.9), tile: 0, flat: 1, fxGain: 0.6, fxTint: V(0.9, 0.75, 1.0), shadowTint: V(1, 1, 1), litTint: V(1, 1, 1),
+      ramp: { bands: 4, rampGamma: 1.28, facetJitter: 0.19, shadowLift: 0.24, bandCap: 1.0, shadowBand: 0.16, shadowEdge: 0.30, shadowSoft: 0.30, shadowDepth: 0.30, ambient: 0.30, specStrength: 0.46, specPower: 14, rimStrength: 0.85, rimPower: 3.4, toothStrength: 0.46, toothScale: 0.42, albTint: V(0.40, 0.31, 0.62), albMix: 0.78, palette: derivePalette(0x38e8ff, 0.66, { rimShift: 0.02 }) } },
+    light: { sun: 3.0, sunColor: 0xffffff, hemi: 0, env: 0, fill: 0, fillColor: 0xffffff },
+    atmo: { aerial: 0.45, sunI: 0.16 },
+    post: { tone: 'aces', exposure: 0.94, gtao: false, bloom: [0.5, 0.6, 0.62], edge: { thick: 1.8, depthT: 0.05, normalT: 0.45, color: V(0.02, 0.012, 0.06), strength: 0.95, boil: 0 }, halftone: { dots: 0.62, size: 7 }, tilt: null,
+      grade: { sat: 1.24, con: 1.10, vig: 0.54, sharp: 0, ca: 0.01, grain: 0.042, poster: 0, paper: 0.20, shadowTint: V(1, 1, 1), highTint: V(1, 1, 1) } },
+    world: { detail: 7, grass: false, cards: false },
   },
   {
-    id: 'coil', name: 'The Coil', hint: 'From Cosmic Conquest: The Coil — night cobalt duotone, mosaic tiles with dark grout, cyan glows and team-neon rims, heavy vignette, ink that darkens.',
-    mat: { lod: 4, normal: 0.1, poster: 0, sat: 0.9, bands: 3, soft: 0.03, ambient: 1.3, spec: 0.8, hatch: 0, halftone: 0.3, outline: 0.35, clay: 0, faction: 0, tooth: 0.25, jitter: 0.45, rim: 0.7, rimColor: V(0.22, 0.9, 1.0), tile: 0.7, flat: 0, fxGain: 0.45, fxTint: V(0.55, 0.85, 1.0), shadowTint: V(0.42, 0.52, 1.0), litTint: V(0.85, 0.98, 1.15) },
-    light: { sun: 3.2, sunColor: 0xcfe4ff, hemi: 0.75, env: 0.55, fill: 0.5, fillColor: 0x38e8ff },
-    atmo: { aerial: 1.1, sunI: 0.5 },
-    post: { tone: 'aces', exposure: 1.0, gtao: false, bloom: [0.9, 0.65, 0.6], edge: { thick: 1.8, depthT: 0.05, normalT: 0.45, color: V(0.01, 0.02, 0.06), strength: 1.0, boil: 0 }, halftone: null, tilt: null,
-      grade: { sat: 0.72, con: 1.15, vig: 0.62, sharp: 0, ca: 0.006, grain: 0.05, poster: 0, paper: 0.12, shadowTint: V(0.4, 0.5, 1.05), highTint: V(0.92, 1.04, 1.18) } },
+    id: 'coil', name: 'The Coil', hint: 'Ported from Cosmic Conquest: The Coil — the same painted ramp in its night register: cobalt cast, a band cap that keeps the ground off the lit step, a tight glint instead of a wet sheen, and a darker exposure.',
+    mat: { lod: 8, normal: 0, poster: 0, sat: 1.0, bands: 0, soft: 0.04, ambient: 1, spec: 1, hatch: 0, halftone: 0, outline: 0, clay: 0, faction: 0, tooth: 0, jitter: 0, rim: 0, rimColor: V(0.22, 0.9, 1.0), tile: 0, flat: 1, fxGain: 0.5, fxTint: V(0.55, 0.85, 1.0), shadowTint: V(1, 1, 1), litTint: V(1, 1, 1),
+      ramp: { bands: 4, rampGamma: 1.24, facetJitter: 0.19, shadowLift: 0.24, bandCap: 0.70, shadowBand: 0.16, shadowEdge: 0.30, shadowSoft: 0.30, shadowDepth: 0.30, ambient: 0.26, specStrength: 0.20, specPower: 90, rimStrength: 0.85, rimPower: 3.4, toothStrength: 0.46, toothScale: 0.42, albTint: V(0.17, 0.27, 0.55), albMix: 0.85, palette: derivePalette(0x38e8ff, 0.66, { rimShift: 0.02, groundL: 0.14 }) } },
+    light: { sun: 3.0, sunColor: 0xffffff, hemi: 0, env: 0, fill: 0, fillColor: 0xffffff },
+    atmo: { aerial: 0.4, sunI: 0.1 },
+    post: { tone: 'aces', exposure: 0.88, gtao: false, bloom: [0.5, 0.6, 0.62], edge: { thick: 1.8, depthT: 0.05, normalT: 0.45, color: V(0.01, 0.012, 0.05), strength: 0.95, boil: 0 }, halftone: { dots: 0.62, size: 7 }, tilt: null,
+      grade: { sat: 1.24, con: 1.10, vig: 0.54, sharp: 0, ca: 0.008, grain: 0.042, poster: 0, paper: 0.20, shadowTint: V(1, 1, 1), highTint: V(1, 1, 1) } },
+    world: { detail: 7, grass: false, cards: false },
   },
   {
     id: 'poly', name: 'Poly', hint: 'Low-poly art: flat-shaded facets, flat colours, no textures or outlines; a medium-poly world mesh that applies on the next launch.',
@@ -178,11 +282,11 @@ export const STYLES = [
   },
   {
     id: 'dioramaink', name: 'Diorama Ink', hint: 'The war table drawn in ink: matte clay miniatures with rim light and tilt-shift focus, wearing the comic\'s heavy black outlines and crosshatched shadows.',
-    mat: { lod: 1.2, normal: 0.6, poster: 0, sat: 1.3, bands: 0, soft: 0.06, ambient: 1, spec: 0.45, hatch: 0.6, halftone: 0, outline: 0.4, clay: 1, faction: 0, tooth: 0, jitter: 0, rim: 0, rimColor: V(1, 1, 1), tile: 0, flat: 0, fxGain: 0.9, shadowTint: V(0.78, 0.8, 0.96), litTint: V(1.04, 1.0, 0.94) },
-    light: { sun: 3.7, sunColor: 0xffe6c8, hemi: 0.36, env: 0.75, fill: 0.5, fillColor: 0xa8c8ff },
+    mat: { lod: 1.2, normal: 0.6, poster: 0, sat: 1.3, bands: 0, soft: 0.06, ambient: 1, spec: 0.45, hatch: 0, halftone: 0, outline: 0, clay: 1, faction: 0, tooth: 0, jitter: 0, rim: 0, rimColor: V(1, 1, 1), tile: 0, flat: 0, fxGain: 0.9, shadowTint: V(0.9, 0.92, 1.0), litTint: V(1.03, 1.0, 0.96) },
+    light: { sun: 3.8, sunColor: 0xfff0d8, hemi: 0.55, env: 0.95, fill: 0.62, fillColor: 0xa8c8ff },
     atmo: { aerial: 0.15, sunI: 0.7 },
-    post: { tone: 'aces', exposure: 1.08, gtao: true, bloom: [0.14, 0.5, 0.9], edge: { thick: 2.4, depthT: 0.04, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0 }, halftone: null, tilt: { amount: 5, focus: 0.5, width: 0.2 },
-      grade: { sat: 1.16, con: 1.12, vig: 0.5, sharp: 0.2, ca: 0.004, grain: 0.04, poster: 0, paper: 0.12, shadowTint: V(0.96, 0.97, 1.03), highTint: V(1.04, 1.0, 0.95) } },
+    post: { tone: 'aces', exposure: 1.18, gtao: true, bloom: [0.14, 0.5, 0.9], edge: { thick: 2.4, depthT: 0.04, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0 }, halftone: null, tilt: { amount: 5, focus: 0.5, width: 0.2 },
+      grade: { sat: 1.14, con: 1.06, vig: 0.3, sharp: 0.2, ca: 0.004, grain: 0.02, poster: 0, paper: 0, shadowTint: V(1.0, 1.0, 1.02), highTint: V(1.03, 1.0, 0.97) } },
   },
   {
     id: 'diorama', name: 'Diorama', hint: 'Original: a war table of painted miniatures — matte clay surfaces, studio key and fill lights, tilt-shift focus, no haze.',
@@ -200,4 +304,16 @@ export function applyStyleUniforms(m) {
   const norm = (c) => { const l = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]; return [c[0] / l, c[1] / l, c[2] / l]; };
   STYLE_U.uStShadowTint.value.set(...norm(m.shadowTint)); STYLE_U.uStLitTint.value.set(...norm(m.litTint));
   STYLE_U.uStTooth.value = m.tooth || 0; STYLE_U.uStJitter.value = m.jitter || 0; STYLE_U.uStRim.value = m.rim || 0; STYLE_U.uStTile.value = m.tile || 0; STYLE_U.uStFlat.value = m.flat || 0; STYLE_U.uStRimColor.value.set(...(m.rimColor || [1, 1, 1])); STYLE_U.uStFxGain.value = m.fxGain === undefined ? 1 : m.fxGain; STYLE_U.uStFxTint.value.set(...(m.fxTint || [1, 1, 1]));
+  const r = m.ramp; STYLE_U.uStRamp.value = r ? 1 : 0;
+  if (r) {
+    const p = r.palette;
+    STYLE_U.uStRampA.value.set(r.bands, r.rampGamma, r.facetJitter, r.shadowLift);
+    STYLE_U.uStRampB.value.set(r.bandCap, r.shadowBand, r.shadowEdge, r.shadowSoft);
+    STYLE_U.uStRampC.value.set(r.shadowDepth, r.ambient, r.specStrength, r.specPower);
+    STYLE_U.uStRampD.value.set(r.rimStrength, r.rimPower, r.toothStrength, r.toothScale);
+    STYLE_U.uStLightCol.value.set(...p.light); STYLE_U.uStShadowCol.value.set(...p.shadow);
+    STYLE_U.uStAmbSky.value.set(...p.ambSky); STYLE_U.uStAmbGround.value.set(...p.ambGround);
+    STYLE_U.uStRimColor.value.set(...p.rim);
+    STYLE_U.uStAlbTint.value.set(...(r.albTint || [1, 1, 1])); STYLE_U.uStAlbMix.value = r.albMix === undefined ? 0 : r.albMix;
+  }
 }
