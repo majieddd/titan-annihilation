@@ -3,6 +3,7 @@ import { makePeriodicNoise2, makePeriodicWorley, clamp, smoothstep, lerp, mulber
 
 let maxAniso = 4; let texSize = 768;
 export function setAnisotropy(n) { maxAniso = n; }
+export function getAnisotropy() { return maxAniso; }
 export function setTextureSize(n) { texSize = n; }
 const cache = new Map();
 export const genStats = {};
@@ -190,4 +191,57 @@ export function grassBladeTexture(kind = 'green') {
     ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x0 - w / 2, s); ctx.quadraticCurveTo(x0 + lean * 0.3, s - h * 0.55, x0 + lean, s - h); ctx.quadraticCurveTo(x0 + lean * 0.35 + 2, s - h * 0.5, x0 + w / 2, s); ctx.closePath(); ctx.fill();
   }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.anisotropy = maxAniso; cache.set(key, t); return t;
+}
+
+/** tileable water wave normal map */
+export function waterNormalTexture(size = 512) {
+  if (cache.has('waterN')) return cache.get('waterN');
+  const P = makePeriodicNoise2(hashString('water')); const h = new Float32Array(size * size);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) { const u = x / size, v = y / size; let val = 0.5 + 0.28 * P.fbm(u * 6, v * 6, 6, 4, 2.1, 0.55) + 0.14 * P.fbm(u * 16 + 3, v * 16, 16, 3) + 0.08 * Math.sin(TAU * (u * 5 + 0.6 * P.fbm(u * 4, v * 4, 4, 2))); h[y * size + x] = val; }
+  const c = document.createElement('canvas'); c.width = c.height = size; const ctx = c.getContext('2d'); const img = ctx.createImageData(size, size); const str = 1.6 * size / 256;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const i = y * size + x; const hl = h[y * size + ((x - 1 + size) % size)], hr = h[y * size + ((x + 1) % size)], hu = h[((y - 1 + size) % size) * size + x], hd = h[((y + 1) % size) * size + x];
+    let nx = (hl - hr) * str, ny = (hd - hu) * str, nz = 1; const l = Math.hypot(nx, ny, nz); img.data[i * 4] = (nx / l * 0.5 + 0.5) * 255; img.data[i * 4 + 1] = (ny / l * 0.5 + 0.5) * 255; img.data[i * 4 + 2] = (nz / l * 0.5 + 0.5) * 255; img.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0); const t = makeTex(c, false); cache.set('waterN', t); return t;
+}
+/** alpha-cut cluster of leaves for tree canopy cards */
+export function leafClusterTexture(size = 256) {
+  if (cache.has('leaves')) return cache.get('leaves');
+  const c = document.createElement('canvas'); c.width = c.height = size; const ctx = c.getContext('2d'); ctx.clearRect(0, 0, size, size); const rng = mulberry32(hashString('leaves'));
+  for (let i = 0; i < 260; i++) {
+    const rad = Math.pow(rng(), 0.6) * size * 0.46, ang = rng() * TAU; const cx = size / 2 + Math.cos(ang) * rad, cy = size / 2 + Math.sin(ang) * rad; const d = rad / (size / 2);
+    const r = 9 + rng() * 13; const a = rng() * TAU; const g = 0.3 + rng() * 0.3; const shade = (0.55 + rng() * 0.6) * (1.0 - d * 0.35);
+    ctx.fillStyle = `rgb(${(0.14 * 255 * shade) | 0},${(g * 255 * shade) | 0},${(0.08 * 255 * shade) | 0})`;
+    ctx.beginPath(); ctx.ellipse(cx, cy, r, r * 0.5, a, 0, TAU); ctx.fill();
+    ctx.fillStyle = `rgba(${(0.3 * 255 * shade) | 0},${((g + 0.2) * 255 * shade) | 0},${(0.12 * 255 * shade) | 0},0.55)`;
+    ctx.beginPath(); ctx.ellipse(cx + Math.cos(a) * r * 0.35, cy + Math.sin(a) * r * 0.35, r * 0.5, r * 0.28, a, 0, TAU); ctx.fill();
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxAniso; cache.set('leaves', t); return t;
+}
+
+/** conifer silhouette for crossed-card trees: thousands of drooping needle strokes inside a tall triangle */
+export function coniferTexture(size = 256) {
+  if (cache.has('conifer')) return cache.get('conifer');
+  const c = document.createElement('canvas'); c.width = size * 2; c.height = size; const ctx = c.getContext('2d'); ctx.clearRect(0, 0, size * 2, size); const rng = mulberry32(hashString('conifer'));
+  const cx = size / 2, top = size * 0.03, bottom = size * 0.985;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgb(62,44,28)'; ctx.lineWidth = size * 0.028; ctx.beginPath(); ctx.moveTo(cx, size * 0.3); ctx.lineTo(cx, bottom); ctx.stroke();
+  for (let i = 0; i < 3200; i++) {
+    const t = Math.pow(rng(), 0.75); const y = top + t * (bottom - top - size * 0.07); const halfW = size * 0.015 + t * size * 0.45;
+    const side = rng() < 0.5 ? -1 : 1; const x0 = cx + side * rng() * halfW * 0.92; const len = size * (0.025 + rng() * 0.05); const a = 0.1 + rng() * 0.7;
+    const shade = (0.45 + rng() * 0.7) * (1 - t * 0.2); const g = 0.3 + rng() * 0.22;
+    ctx.strokeStyle = `rgb(${(0.09 * 255 * shade) | 0},${(g * 255 * shade) | 0},${(0.08 * 255 * shade) | 0})`; ctx.lineWidth = 1 + rng() * 1.5;
+    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + side * Math.cos(a) * len, y + Math.sin(a) * len); ctx.stroke();
+  }
+  // right half: top-down view (radial needle whorls) for the horizontal card
+  const tx = size * 1.5, ty = size / 2;
+  for (let i = 0; i < 2600; i++) {
+    const r0 = Math.pow(rng(), 0.55) * size * 0.46; const a = rng() * TAU; const len = size * (0.03 + rng() * 0.06);
+    const shade = (0.4 + rng() * 0.7) * (1 - r0 / (size * 0.5) * 0.35); const g = 0.3 + rng() * 0.22;
+    ctx.strokeStyle = `rgb(${(0.09 * 255 * shade) | 0},${(g * 255 * shade) | 0},${(0.08 * 255 * shade) | 0})`; ctx.lineWidth = 1 + rng() * 1.5;
+    const x0 = tx + Math.cos(a) * r0, y0 = ty + Math.sin(a) * r0; const b = a + (rng() - 0.5) * 0.6;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + Math.cos(b) * len, y0 + Math.sin(b) * len); ctx.stroke();
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = maxAniso; cache.set('conifer', t); return t;
 }

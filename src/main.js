@@ -16,6 +16,7 @@ import { UnitRenderer } from './models.js';
 import { GameAudio } from './audio.js';
 import { TEAM_COLORS } from './defs.js';
 import { setAnisotropy, setTextureSize, nebulaTexture } from './textures.js';
+import { loadRealTextures, TEX_KINDS } from './assets.js';
 import { mulberry32, hashString, clamp, Simplex, VERSION } from './util.js';
 
 const STEP = 1 / 60;
@@ -38,12 +39,27 @@ const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 80000);
 const sun = new THREE.DirectionalLight(0xfff1dc, 3.1); sun.castShadow = true;
 sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.5; sun.shadow.camera.near = 100; sun.shadow.camera.far = 1300;
 scene.add(sun); scene.add(sun.target);
-const hemi = new THREE.HemisphereLight(0x8fb4ff, 0x3a2a1a, 0.5); scene.add(hemi);
-const pmrem = new THREE.PMREMGenerator(renderer); scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.5; pmrem.dispose();
+const hemi = new THREE.HemisphereLight(0x8fb4ff, 0x3a2a1a, 0.15); scene.add(hemi);
+const pmrem = new THREE.PMREMGenerator(renderer); scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.5; pmrem.compileCubemapShader();
+// dynamic image-based lighting: a cube capture of the real sky/terrain around the camera anchor, filtered by PMREM
+const envRT = new THREE.WebGLCubeRenderTarget(128, { type: THREE.HalfFloatType, generateMipmaps: false });
+const envCam = new THREE.CubeCamera(2, 70000, envRT); envCam.children.forEach((c) => c.layers.enable(1)); let envTarget = null; let envT = -1e9; const _envN = new THREE.Vector3();
+function updateEnvironment(now, force) {
+  const p = cam.planet; if (!p || (!force && now - envT < 4000)) return; envT = now;
+  const hid = []; for (const o of [app.fxGroup]) if (o && o.visible) { o.visible = false; hid.push(o); }
+  if (unitRenderer) unitRenderer.setVisible(false);
+  _envN.copy(cam.anchor).sub(p.center).normalize(); envCam.position.copy(cam.anchor).addScaledVector(_envN, 30);
+  const sm = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false; envCam.update(renderer, scene); renderer.shadowMap.autoUpdate = sm;
+  for (const o of hid) o.visible = true; if (unitRenderer) unitRenderer.setVisible(true);
+  const old = envTarget; envTarget = pmrem.fromCubemap(envRT.texture); scene.environment = envTarget.texture; scene.environmentIntensity = 1.0; if (old) old.dispose();
+}
 
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType }));
 const renderPass = new RenderPass(scene, camera); composer.addPass(renderPass);
 const gtao = new GTAOPass(scene, camera, 1, 1); gtao.enabled = false; gtao.blendIntensity = 0.7; composer.addPass(gtao);
+// layer 1 = alpha-tested / volumetric surfaces (foliage cards, grass, clouds, sky shell): drawn normally but excluded from the AO depth pass
+camera.layers.enable(1); sun.shadow.camera.layers.enable(1);
+{ const r = gtao.render.bind(gtao); gtao.render = (...a) => { camera.layers.disable(1); r(...a); camera.layers.enable(1); }; }
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.38, 0.5, 0.92); composer.addPass(bloom);
 const grade = new ShaderPass({
   uniforms: { tDiffuse: { value: null }, uAmount: { value: 1 }, uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) } },
@@ -61,7 +77,7 @@ function applyQuality() {
   const q = app.settings.quality; const dpr = q === 'medium' ? Math.min(devicePixelRatio, 1.25) : (q === 'high' ? Math.min(devicePixelRatio, 2) : devicePixelRatio);
   renderer.setPixelRatio(dpr); const sm = q === 'medium' ? 2048 : 4096; setTextureSize(q === 'medium' ? 512 : (q === 'high' ? 768 : 1024));
   if (sun.shadow.mapSize.x !== sm) { sun.shadow.mapSize.set(sm, sm); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
-  gtao.enabled = q === 'ultra'; resize();
+  gtao.enabled = q !== 'medium'; resize();
 }
 function setupSky() {
   const rng = mulberry32(7); const n = 9000; const p = new Float32Array(n * 3); const c = new Float32Array(n * 3); const s = new Float32Array(n);
@@ -74,12 +90,12 @@ function setupSky() {
   const neb = new THREE.Mesh(new THREE.SphereGeometry(60000, 48, 24), new THREE.MeshBasicMaterial({ map: nebulaTexture(new Simplex(mulberry32(5))), side: THREE.BackSide, depthWrite: false })); neb.renderOrder = -10; neb.frustumCulled = false; scene.add(neb);
 }
 
-app.fogU = { uFogColor: { value: new THREE.Color(0, 0, 0) }, uFogDensity: { value: 0 } };
-const unitRenderer = new UnitRenderer(scene, app.fogU); app.unitRenderer = unitRenderer;
+app.atmoU = { uAtC: { value: new THREE.Vector3() }, uAtR: { value: 1 }, uAtRa: { value: 1 }, uAtHr: { value: 1 }, uAtHm: { value: 1 }, uAtI: { value: 0 }, uAtOn: { value: 0 }, uAtBr: { value: new THREE.Vector3() }, uAtBm: { value: 0 }, uAtSun: { value: new THREE.Vector3(0, 0, 1) }, uAtK: { value: 0.1 } };
+let unitRenderer = null;
 const audio = new GameAudio(); app.audio = audio;
 const cam = new PlanetCamera(camera, null, canvas); app.cam = cam;
 const ui = new UI(app); app.ui = ui;
-cam.onFocus = (p) => { app.system.setFocus(p); hemi.color.setRGB(...p.biome.hemiSky); hemi.groundColor.setRGB(...p.biome.hemiGround); ui.barDirty = true; };
+cam.onFocus = (p) => { app.system.setFocus(p); envT = -1e9; hemi.color.setRGB(...p.biome.hemiSky); hemi.groundColor.setRGB(...p.biome.hemiGround); ui.barDirty = true; };
 cam.onSystem = () => { ui.barDirty = true; };
 
 async function createWorld() {
@@ -159,9 +175,11 @@ function advance(dt, render = true) {
   if (!render) return;
   renderUnits(simTime);
   app.fx.beginFrame(); if (g) g.renderProjectiles(app.fx); if (g && app.state !== 'menu') ui.frame(); app.fx.endFrame();
-  const p = cam.planet; _sunDir.copy(p.sunDir); app.fogU.uFogColor.value.copy(p.uniforms.uFogColor.value); app.fogU.uFogDensity.value = p.uniforms.uFogDensity.value;
+  const p = cam.planet; _sunDir.copy(p.sunDir);
+  { const a = app.atmoU, u = p.uniforms; a.uAtC.value.copy(u.uAtC.value); a.uAtR.value = u.uAtR.value; a.uAtRa.value = u.uAtRa.value; a.uAtHr.value = u.uAtHr.value; a.uAtHm.value = u.uAtHm.value; a.uAtI.value = u.uAtI.value; a.uAtOn.value = 1; a.uAtBr.value.copy(u.uAtBr.value); a.uAtBm.value = u.uAtBm.value; a.uAtSun.value.copy(u.uAtSun.value); a.uAtK.value = u.uAtK.value; }
   sun.position.copy(cam.anchor).addScaledVector(_sunDir, 600); sun.target.position.copy(cam.anchor);
   const s = cam.mode === 'system' ? 700 : clamp(cam.dist * 1.15, 45, 700); const sc = sun.shadow.camera; sc.left = -s; sc.right = s; sc.top = s; sc.bottom = -s; sc.updateProjectionMatrix();
+  updateEnvironment(performance.now(), false);
   composer.render();
   if (app.state === 'playing' || app.state === 'over') ui.update(dt);
 }
@@ -170,6 +188,9 @@ app.advance = (sec, fdt = 1 / 30) => { for (let t = 0; t < sec; t += fdt) advanc
 // ---------- boot ----------
 (async () => {
   setupSky(); applyQuality();
+  $('loadingText').textContent = 'LOADING MATERIALS';
+  try { await loadRealTextures(TEX_KINDS, (kind, n) => { $('loadingText').textContent = 'LOADING MATERIALS ' + n + '/' + TEX_KINDS.length; }); } catch (e) { console.warn('texture preload failed, using procedural materials', e); }
+  unitRenderer = new UnitRenderer(scene, app.atmoU); app.unitRenderer = unitRenderer;
   await createWorld(); setupMenuCamera(); ui.applySettings();
   $('subtitle').textContent = 'v' + VERSION + ' · Command. Expand. Annihilate.'; $('menu').classList.remove('hidden'); app.state = 'menu';
   requestAnimationFrame(frame);

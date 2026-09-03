@@ -3,7 +3,7 @@
 // External imports (three.js CDN) are hoisted to the top of the script.
 const fs = require('fs');
 const path = require('path');
-const ORDER = ['util', 'textures', 'foliage', 'planet', 'system', 'defs', 'models', 'effects', 'audio', 'sim', 'ai', 'camera', 'ui', 'main'];
+const ORDER = ['util', 'textures', 'assets', 'foliage', 'planet', 'system', 'defs', 'models', 'effects', 'audio', 'sim', 'ai', 'camera', 'ui', 'main'];
 const imports = new Set();
 let body = '';
 for (const name of ORDER) {
@@ -20,7 +20,18 @@ for (const name of ORDER) {
   if (/^export\s/m.test(src)) throw new Error('unhandled export in ' + name);
   body += `\n// ===== ${name}.js =====\nconst __mod_${name} = (() => {\n${src}\nreturn { ${exported.join(', ')} };\n})();\n`;
 }
+// embed the reduced texture sets so standalone / artifact builds get real materials too
+let texData = null;
+const embedDir = path.join(__dirname, 'assets', 'tex-embed');
+if (fs.existsSync(embedDir)) {
+  texData = {};
+  for (const kind of fs.readdirSync(embedDir)) {
+    const kd = path.join(embedDir, kind); if (!fs.statSync(kd).isDirectory()) continue; texData[kind] = {};
+    for (const f of fs.readdirSync(kd)) if (f.endsWith('.jpg')) texData[kind][f.replace('.jpg', '')] = 'data:image/jpeg;base64,' + fs.readFileSync(path.join(kd, f)).toString('base64');
+  }
+}
 let html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+if (texData) html = html.replace('<script type="importmap">', `<script>window.__TEXDATA = ${JSON.stringify(texData)};</script>\n<script type="importmap">`);
 html = html.replace(/<script type="module" src="src\/main\.js"><\/script>/, () => `<script type="module">\n${[...imports].join('\n')}\n${body}\n</script>`);
 html = html.replace(/<!doctype html>\s*/i, '').replace(/<\/?html[^>]*>\s*/gi, '').replace(/<\/?head>\s*/gi, '').replace(/<\/?body[^>]*>\s*/gi, '').replace(/<meta name="viewport"[^>]*>\s*/gi, '');
 fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });

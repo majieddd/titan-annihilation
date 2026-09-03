@@ -1,6 +1,6 @@
 # Titan Annihilation
 
-A browser real-time strategy game in the spirit of *Planetary Annihilation: TITANS*: spherical planets in a star system, a commander economy, factories, fabbers, titans, orbital units, teleporters, nukes, and an AI opponent. Built with three.js; everything (terrain, textures, models, sound) is generated procedurally at runtime.
+A browser real-time strategy game in the spirit of *Planetary Annihilation: TITANS*: spherical planets in a star system, a commander economy, factories, fabbers, titans, orbital units, teleporters, nukes, and an AI opponent. Built with three.js. Terrain, models and sound are generated procedurally at runtime; since v3.0 the surface materials are real photo-scanned PBR texture sets (CC0, from ambientCG — see [`assets/tex/CREDITS.md`](assets/tex/CREDITS.md)), lit by a physically based scattering atmosphere and dynamic image-based lighting.
 
 **Play:** open `index.html` from a web server (GitHub Pages serves it at the repository root), or double-click a standalone build in `versions/`.
 
@@ -21,4 +21,5 @@ Every release is kept as a standalone file in [`versions/`](versions/) so builds
 - `node build.js` bundles everything into `dist/index.html` (single file) and `versions/titan-annihilation-v<version>.html`.
 - `python3 serve.py 8124` runs a no-cache dev server.
 - `texlab.html` previews every procedural material with generation timings.
+- `python3 tools/fetch_textures.py` downloads and packs the ambientCG texture sets into `assets/tex/` (1K, served) and `assets/tex-embed/` (768px, embedded into the standalone builds by `build.js`). The game falls back to the procedural materials if the sets are missing.
 - Debug hooks in the browser console: `__app` (app state) and `__app.advance(seconds)` to fast-forward the simulation.

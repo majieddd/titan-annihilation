@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { DEFS } from './defs.js';
-import { detailTexture } from './textures.js';
+import { getTextureSet } from './assets.js';
+import { injectFog } from './planet.js';
 
 const COLORS = { base: [0.50, 0.53, 0.57], d: [0.20, 0.22, 0.25], l: [0.74, 0.76, 0.80], k: [0.07, 0.07, 0.08], t: [0.6, 0.6, 0.6] };
 const BASE_GEOS = {};
@@ -52,40 +53,55 @@ export function buildModel(def) {
   bodyGeo.computeBoundingSphere(); if (turretGeo) turretGeo.computeBoundingSphere();
   return { body: bodyGeo, turret: turretGeo, height: maxY, pivot };
 }
-export function makeUnitMaterial(fogU) {
-  const panel = detailTexture('panel', 256);
+export function makeUnitMaterial(atmoU) {
+  const panel = getTextureSet('panel');
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.55 });
   mat.onBeforeCompile = (shader) => {
-    shader.uniforms.tPanel = { value: panel.map }; shader.uniforms.tPanelN = { value: panel.normal }; if (fogU) { shader.uniforms.uFogColor = fogU.uFogColor; shader.uniforms.uFogDensity = fogU.uFogDensity; }
+    shader.uniforms.tPanel = { value: panel.map }; shader.uniforms.tPanelN = { value: panel.normal };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
         attribute float aTeam; attribute float aGlow; attribute float aHeight; attribute vec3 aTeamColor; attribute vec2 aInst;
-        varying float vTeam; varying float vGlow; varying float vHeight; varying vec3 vTeamColor; varying vec2 vInst; varying vec3 vObj; varying vec3 vObjN; varying float vFogD;`)
+        varying float vTeam; varying float vGlow; varying float vHeight; varying vec3 vTeamColor; varying vec2 vInst; varying vec3 vObj; varying vec3 vObjN; varying vec3 vR0; varying vec3 vR1; varying vec3 vR2;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
-        vTeam = aTeam; vGlow = aGlow; vHeight = aHeight; vTeamColor = aTeamColor; vInst = aInst; vObj = position; vObjN = normal;`)
-      .replace('#include <project_vertex>', '#include <project_vertex>\nvFogD = length(mvPosition.xyz);');
+        vTeam = aTeam; vGlow = aGlow; vHeight = aHeight; vTeamColor = aTeamColor; vInst = aInst; vObj = position; vObjN = normal;
+        #ifdef USE_INSTANCING
+        vR0 = instanceMatrix[0].xyz; vR1 = instanceMatrix[1].xyz; vR2 = instanceMatrix[2].xyz;
+        #else
+        vR0 = vec3(1.0, 0.0, 0.0); vR1 = vec3(0.0, 1.0, 0.0); vR2 = vec3(0.0, 0.0, 1.0);
+        #endif`);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
-        uniform sampler2D tPanel; uniform sampler2D tPanelN; uniform vec3 uFogColor; uniform float uFogDensity;
-        varying float vTeam; varying float vGlow; varying float vHeight; varying vec3 vTeamColor; varying vec2 vInst; varying vec3 vObj; varying vec3 vObjN; varying float vFogD;`)
+        uniform sampler2D tPanel; uniform sampler2D tPanelN;
+        varying float vTeam; varying float vGlow; varying float vHeight; varying vec3 vTeamColor; varying vec2 vInst; varying vec3 vObj; varying vec3 vObjN; varying vec3 vR0; varying vec3 vR1; varying vec3 vR2;`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         if (vInst.x < 1.0 && vHeight > vInst.x) discard;
         vec3 an = abs(normalize(vObjN)); vec3 pw = an * an * an * an; pw /= (pw.x + pw.y + pw.z);
         vec3 pp = vObj * 0.5;
-        float pnl = texture2D(tPanel, pp.zy).r * pw.x + texture2D(tPanel, pp.xz).r * pw.y + texture2D(tPanel, pp.xy).r * pw.z;
+        vec3 pnc = texture2D(tPanel, pp.zy).rgb * pw.x + texture2D(tPanel, pp.xz).rgb * pw.y + texture2D(tPanel, pp.xy).rgb * pw.z; float pnl = dot(pnc, vec3(0.333));
         float prg = (texture2D(tPanelN, pp.zy).a * pw.x + texture2D(tPanelN, pp.xz).a * pw.y + texture2D(tPanelN, pp.xy).a * pw.z - 0.3) / 0.7;
-        diffuseColor.rgb = mix(diffuseColor.rgb, vTeamColor, vTeam);
-        diffuseColor.rgb *= 0.72 + 0.5 * pnl;
+        float pnh = (texture2D(tPanel, pp.zy).a * pw.x + texture2D(tPanel, pp.xz).a * pw.y + texture2D(tPanel, pp.xy).a * pw.z - 0.3) / 0.7;
+        diffuseColor.rgb = mix(diffuseColor.rgb, vTeamColor * 0.9, vTeam);
+        diffuseColor.rgb *= (0.62 + 0.75 * pnl) * (0.8 + 0.2 * pnh);
+        diffuseColor.rgb *= mix(0.6, 1.0, smoothstep(0.0, 0.4, vHeight + (pnl - 0.5) * 0.3));
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), vInst.y * 0.7);`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        roughnessFactor = clamp(0.28 + 0.6 * prg, 0.15, 0.95);`)
-      .replace('#include <fog_fragment>', 'float ffog = 1.0 - exp(-vFogD * uFogDensity); gl_FragColor.rgb = mix(gl_FragColor.rgb, uFogColor, ffog);')
+        roughnessFactor = clamp(mix(0.3, 0.4, vTeam) + 0.5 * prg + (1.0 - smoothstep(0.0, 0.4, vHeight)) * 0.25, 0.15, 0.95);`)
+      .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
+        metalnessFactor = mix(0.8, 0.35, vTeam);`)
+      .replace('#include <normal_fragment_maps>', `
+        vec3 uon = normalize(vObjN);
+        vec3 ux = texture2D(tPanelN, pp.zy).xyz * 2.0 - 1.0; vec3 uy = texture2D(tPanelN, pp.xz).xyz * 2.0 - 1.0; vec3 uz = texture2D(tPanelN, pp.xy).xyz * 2.0 - 1.0;
+        ux = vec3(ux.xy + uon.zy, abs(ux.z) * uon.x); uy = vec3(uy.xy + uon.xz, abs(uy.z) * uon.y); uz = vec3(uz.xy + uon.xy, abs(uz.z) * uon.z);
+        vec3 unb = normalize(mix(uon, normalize(ux.zyx * pw.x + uy.xzy * pw.y + uz.xyz * pw.z), 0.55));
+        mat3 urot = mat3(normalize(vR0), normalize(vR1), normalize(vR2));
+        normal = normalize((viewMatrix * vec4(urot * unb, 0.0)).xyz);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         totalEmissiveRadiance += vTeamColor * vGlow * 1.4;
         float edge = (vInst.x < 1.0) ? (1.0 - smoothstep(0.0, 0.06, vInst.x - vHeight)) : 0.0;
         totalEmissiveRadiance += vTeamColor * edge * 1.8 + vec3(1.0) * vInst.y * 1.2;`);
   };
-  mat.customProgramCacheKey = () => 'unitmat_v3';
+  mat.customProgramCacheKey = () => 'unitmat_v5';
+  if (atmoU) injectFog(mat, atmoU, 'unitmat_v5');
   return mat;
 }
 function makeInstanced(geo, cap, material) {
@@ -107,6 +123,7 @@ export class UnitRenderer {
       this.types[id] = { def, model, cap, n: 0, body, turret, bTeam: body.geometry.getAttribute('aTeamColor'), bInst: body.geometry.getAttribute('aInst'), tTeam: turret && turret.geometry.getAttribute('aTeamColor'), tInst: turret && turret.geometry.getAttribute('aInst') };
     }
   }
+  setVisible(v) { for (const id in this.types) { const t = this.types[id]; t.body.visible = v; if (t.turret) t.turret.visible = v; } }
   begin() { for (const id in this.types) this.types[id].n = 0; }
   add(defId, matrix, teamColor, progress, flash, turretMatrix) {
     const t = this.types[defId]; if (!t || t.n >= t.cap) return; const i = t.n++;
