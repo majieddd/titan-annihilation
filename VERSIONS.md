@@ -4,6 +4,10 @@ Standalone builds of each version live in `versions/` (double-click to play; nee
 The published artifact keeps its own version picker as well (labels match the entries below).
 The in-game menu shows the version number under the title.
 
+## v3.0.1 — 2026-09-02 — Camera direction fix
+- WASD / arrow keys were mirrored horizontally (D moved the view left) because the camera frame's "right" vector pointed to screen-left; keys now move the camera in the key's direction, and middle/right-drag pulls the world with the mouse.
+- The same fix applied to the system view (A/D orbit, W/S tilt).
+
 ## v3.0.0 — 2026-09-02 — Realism pass: real PBR materials, physical sky, image-based lighting
 - Real photo-scanned CC0 materials from ambientCG replace the procedural set: grass, rock, sand, snow, ice, lava crust (with its own emission map), gravel, metal plates for units, and bark for tree trunks. Each ships as colour + normal + roughness + ambient-occlusion + height maps, packed at build time and embedded in the standalone file (credits in `assets/tex/CREDITS.md`).
 - Physically based atmosphere: single-scattering Rayleigh + Mie sky shell per planet (blue Terran sky, dusty Arid, sulphur-orange Magma, thin Barren) with a real sunlit limb from orbit, and aerial perspective on every surface (terrain, water, props, units, grass) — distant mountains fade into the sky the way they do in photographs. Replaces the old fog and rim glow.

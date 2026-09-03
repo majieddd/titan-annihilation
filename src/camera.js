@@ -18,7 +18,8 @@ export class PlanetCamera {
   }
   get maxDist() { return this.planet ? this.planet.R * 4.2 : 1500; }
   setAnchor(dir, forwardHint) { if (!forwardHint) forwardHint = anyTangent(dir, _a); frameQuat(dir, forwardHint, this.q); this.updateFrame(); }
-  updateFrame() { this.normal.set(0, 1, 0).applyQuaternion(this.q); this.forward.set(0, 0, 1).applyQuaternion(this.q); this.right.set(1, 0, 0).applyQuaternion(this.q); }
+  // local +Y = up, +Z = forward (the camera sits behind the anchor and looks along +Z), so screen-right is local -X
+  updateFrame() { this.normal.set(0, 1, 0).applyQuaternion(this.q); this.forward.set(0, 0, 1).applyQuaternion(this.q); this.right.set(-1, 0, 0).applyQuaternion(this.q); }
   moveToward(t, angle) { if (angle === 0) return; _a.crossVectors(this.normal, t); if (_a.lengthSq() < 1e-10) return; _a.normalize(); _q.setFromAxisAngle(_a, angle); this.q.premultiply(_q).normalize(); this.updateFrame(); }
   moveForward(units) { this.moveToward(this.forward, units / this.planet.R); }
   moveRight(units) { this.moveToward(this.right, units / this.planet.R); }
@@ -63,7 +64,7 @@ export class PlanetCamera {
         if (k.KeyA || k.ArrowLeft) this.moveRight(-sp); if (k.KeyD || k.ArrowRight) this.moveRight(sp);
         if (k.KeyQ) this.yaw(dt * 1.4); if (k.KeyE) this.yaw(-dt * 1.4);
       }
-      if (this.spin) this.moveRight(this.spin * dt * R);
+      if (this.spin) this.moveRight(-this.spin * dt * R);
       this.dist = lerp(this.dist, this.targetDist, 1 - Math.exp(-dt * this.zoomLerp));
       const surf = this.planet.heightAt(this.normal); this.anchor.copy(this.planet.center).addScaledVector(this.normal, surf);
       const t = this.tilt; const pos = cam.position;
@@ -75,8 +76,9 @@ export class PlanetCamera {
       cam.up.copy(this.normal).multiplyScalar(Math.sin(t)).addScaledVector(this.forward, Math.cos(t)); cam.lookAt(this.anchor);
     } else {
       if (this.enabled) {
-        if (k.KeyA || k.ArrowLeft) this.sysYaw(dt * 0.9); if (k.KeyD || k.ArrowRight) this.sysYaw(-dt * 0.9);
-        if (k.KeyW || k.ArrowUp) this.sysPitch(dt * 0.6); if (k.KeyS || k.ArrowDown) this.sysPitch(-dt * 0.6);
+        // keys move the camera in the key's direction (drag moves the world under the mouse)
+        if (k.KeyA || k.ArrowLeft) this.sysYaw(-dt * 0.9); if (k.KeyD || k.ArrowRight) this.sysYaw(dt * 0.9);
+        if (k.KeyW || k.ArrowUp) this.sysPitch(-dt * 0.6); if (k.KeyS || k.ArrowDown) this.sysPitch(dt * 0.6);
       }
       if (this.spin) this.sysYaw(this.spin * dt * 8);
       this.sysDist = lerp(this.sysDist, this.sysTarget, 1 - Math.exp(-dt * 5));
