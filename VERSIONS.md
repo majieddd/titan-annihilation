@@ -4,6 +4,13 @@ Standalone builds of each version live in `versions/` (double-click to play; nee
 The published artifact keeps its own version picker as well (labels match the entries below).
 The in-game menu shows the version number under the title.
 
+## v3.1.0 — 2026-09-02 — Unit fidelity pass, volumetric-look clouds, water-crossing fix
+- Units and structures: baked ambient occlusion between parts (contact shadows under overhangs, around wheels, hatches and greebles) computed from sphere proxies at model build time (~0.2 s for all 41 models), applied to indirect light with specular occlusion and a lighter direct-light term.
+- Edge wear: bevels and rims expose bare metal (brighter, more metallic, smoother) modulated by the plate texture, so paint reads as worn at the corners like real vehicles.
+- Clouds: a normal map derived from cloud thickness gives the cloud deck rounded, self-shaded puffs instead of flat sprites; the deck stays in the shadow pass at close zoom so cloud shadows keep drifting across the ground.
+- Fix: ground units no longer drive through the sea. The navigation grid is coarser than the terrain, so links between land nodes are now rejected when the terrain dips under water halfway, and units are clamped to the water surface in the rare remaining cases.
+- Loading screen shows the unit build step; unit model build time is logged to the console.
+
 ## v3.0.1 — 2026-09-02 — Camera direction fix
 - WASD / arrow keys were mirrored horizontally (D moved the view left) because the camera frame's "right" vector pointed to screen-left; keys now move the camera in the key's direction, and middle/right-drag pulls the world with the mouse.
 - The same fix applied to the system view (A/D orbit, W/S tilt).

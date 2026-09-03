@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clamp, lerp, smoothstep, mulberry32, Simplex, MinHeap, angleBetween, tangentToward, moveOnSphere, rotateTangent, anyTangent, frameQuat, TAU } from './util.js';
-import { detailTexture, cloudTexture, waterNormalTexture, leafClusterTexture, coniferTexture } from './textures.js';
+import { detailTexture, cloudTexture, cloudNormalTexture, waterNormalTexture, leafClusterTexture, coniferTexture } from './textures.js';
 import { getTextureSet } from './assets.js';
 import { GrassField } from './foliage.js';
 
@@ -263,7 +263,7 @@ export class Planet {
     this.nav.lookup = new SphereLookup(nav.verts, nav.count, nadj.start, nadj.list, 160, 80);
     const rawE = new Float32Array(nav.count);
     for (let i = 0; i < nav.count; i++) rawE[i] = this.rawElev(nav.verts[i * 3], nav.verts[i * 3 + 1], nav.verts[i * 3 + 2]);
-    const rawPass = this.computePassable(rawE);
+    const rawPass = this.computePassable(rawE, (x, y, z) => this.rawElev(x, y, z));
     this._stampArr = new Int32Array(nav.count); this._stamp = 0;
     // ---- spawns (main planet only) ----
     this.spawns = [];
@@ -304,7 +304,7 @@ export class Planet {
     for (const s of this.spots) s.elev = this.elevSpawnFlat(s.dir.x, s.dir.y, s.dir.z);
     this.navElev = new Float32Array(nav.count);
     for (let i = 0; i < nav.count; i++) this.navElev[i] = this.elev(nav.verts[i * 3], nav.verts[i * 3 + 1], nav.verts[i * 3 + 2]);
-    this.nav.pass = this.computePassable(this.navElev); this.nav.blocked = new Uint8Array(nav.count);
+    this.nav.pass = this.computePassable(this.navElev, (x, y, z) => this.elev(x, y, z)); this.nav.blocked = new Uint8Array(nav.count);
     // ambient occlusion from local concavity (2-ring mean elevation)
     this.navAO = new Float32Array(nav.count);
     for (let i = 0; i < nav.count; i++) {
@@ -349,11 +349,13 @@ export class Planet {
     this.buildMeshes();
     this.genTime = performance.now() - t0;
   }
-  computePassable(elev) {
+  computePassable(elev, elevFn) {
     const nav = this.nav; const pass = new Uint8Array(nav.count); const R = this.R; const seaLimit = this.biome.sea ? 0.9 : -1e9;
     for (let i = 0; i < nav.count; i++) {
       if (elev[i] < seaLimit) continue; let ok = true; const x = nav.verts[i * 3], y = nav.verts[i * 3 + 1], z = nav.verts[i * 3 + 2];
-      for (let k = nav.adjStart[i], e = nav.adjStart[i + 1]; k < e; k++) { const u = nav.adjList[k]; const dx = nav.verts[u * 3] - x, dy = nav.verts[u * 3 + 1] - y, dz = nav.verts[u * 3 + 2] - z; const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) * R; if (Math.abs(elev[u] - elev[i]) / dist > 0.62) { ok = false; break; } }
+      for (let k = nav.adjStart[i], e = nav.adjStart[i + 1]; k < e; k++) { const u = nav.adjList[k]; const dx = nav.verts[u * 3] - x, dy = nav.verts[u * 3 + 1] - y, dz = nav.verts[u * 3 + 2] - z; const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) * R; if (Math.abs(elev[u] - elev[i]) / dist > 0.62) { ok = false; break; }
+        // the nav grid is coarser than the terrain: a link between two land nodes must not dip under water halfway (inlets, puddles)
+        if (elev[u] >= seaLimit && seaLimit > -1e8) { let mx = x + dx * 0.5, my = y + dy * 0.5, mz = z + dz * 0.5; const ml = Math.sqrt(mx * mx + my * my + mz * mz); mx /= ml; my /= ml; mz /= ml; if (elevFn(mx, my, mz) < 0.3) { ok = false; break; } } }
       pass[i] = ok ? 1 : 0;
     }
     return pass;
@@ -524,8 +526,8 @@ export class Planet {
     this.water = new THREE.Mesh(geo, wm); this.water.frustumCulled = true; this.water.renderOrder = 1; this.group.add(this.water);
   }
   buildClouds() {
-    const R = this.R, b = this.biome; const tex = cloudTexture(this.noise, this.noiseOff, b.clouds);
-    const mk = (radius, opacity, alphaTest) => { const cm = new THREE.MeshLambertMaterial({ map: tex, transparent: true, depthWrite: false, alphaTest, opacity }); injectSun(cm, this.uniforms.uSunView, 'clouds'); injectFog(cm, this.uniforms, 'clouds_sun'); const m = new THREE.Mesh(new THREE.SphereGeometry(radius, 96, 64), cm); m.frustumCulled = false; m.renderOrder = 3; return m; };
+    const R = this.R, b = this.biome; const tex = cloudTexture(this.noise, this.noiseOff, b.clouds); const ntex = cloudNormalTexture(tex);
+    const mk = (radius, opacity, alphaTest) => { const cm = new THREE.MeshStandardMaterial({ map: tex, normalMap: ntex, normalScale: new THREE.Vector2(1.4, 1.4), roughness: 1, metalness: 0, transparent: true, depthWrite: false, alphaTest, opacity }); injectSun(cm, this.uniforms.uSunView, 'clouds'); injectFog(cm, this.uniforms, 'clouds_sun'); const m = new THREE.Mesh(new THREE.SphereGeometry(radius, 96, 64), cm); m.frustumCulled = false; m.renderOrder = 3; return m; };
     this.clouds = mk(R * 1.085, 0.92, 0.2); this.clouds.rotation.y = this.rng() * TAU; this.clouds.layers.set(1); this.group.add(this.clouds);
     this.clouds2 = mk(R * 1.105, 0.4, 0.3); this.clouds2.rotation.y = this.rng() * TAU + 2; this.clouds2.rotation.z = 0.4; this.group.add(this.clouds2);
     this.cloudBase = 0.92;
@@ -605,7 +607,7 @@ export class Planet {
     this.uniforms.uSunView.value.copy(this.sunDir).transformDirection(camera.matrixWorldInverse);
     if (this.clouds) {
       this.clouds.rotation.y += dt * 0.003; this.clouds2.rotation.y += dt * 0.0045;
-      const o = smoothstep(60, 240, alt); this.clouds.material.opacity = o * this.cloudBase; this.clouds2.material.opacity = o * 0.4; this.clouds.visible = o > 0.02; this.clouds2.visible = o > 0.02; if (this.focused) this.clouds.castShadow = o > 0.3;
+      const o = smoothstep(60, 240, alt); this.clouds.material.opacity = o * this.cloudBase; this.clouds2.material.opacity = o * 0.4; this.clouds.visible = true; /* stays in the shadow pass so cloud shadows drift over the ground at close zoom */ this.clouds2.visible = o > 0.02; if (this.focused) this.clouds.castShadow = o > 0.3;
     }
     this.uniforms.uHaze.value = smoothstep(90, 6, alt);
   }

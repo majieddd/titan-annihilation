@@ -190,7 +190,8 @@ app.advance = (sec, fdt = 1 / 30) => { for (let t = 0; t < sec; t += fdt) advanc
   setupSky(); applyQuality();
   $('loadingText').textContent = 'LOADING MATERIALS';
   try { await loadRealTextures(TEX_KINDS, (kind, n) => { $('loadingText').textContent = 'LOADING MATERIALS ' + n + '/' + TEX_KINDS.length; }); } catch (e) { console.warn('texture preload failed, using procedural materials', e); }
-  unitRenderer = new UnitRenderer(scene, app.atmoU); app.unitRenderer = unitRenderer;
+  $('loadingText').textContent = 'BUILDING UNITS'; await new Promise((r) => setTimeout(r, 30));
+  { const t0 = performance.now(); unitRenderer = new UnitRenderer(scene, app.atmoU); app.unitRenderer = unitRenderer; app.unitBuildMs = performance.now() - t0; console.info('unit models built in ' + app.unitBuildMs.toFixed(0) + ' ms'); }
   await createWorld(); setupMenuCamera(); ui.applySettings();
   $('subtitle').textContent = 'v' + VERSION + ' · Command. Expand. Annihilate.'; $('menu').classList.remove('hidden'); app.state = 'menu';
   requestAnimationFrame(frame);

@@ -70,6 +70,7 @@ export class Game {
     if (u.transit) return;
     const pl = u.planet; const h = pl.heightAt(u.dir);
     let r = u.def.layer === 'ground' ? h + HOVER : h + u.alt;
+    if (u.def.layer === 'ground' && pl.biome.sea) r = Math.max(r, pl.R + 0.3 + HOVER); // never sink below the sea/lava surface
     if (u.drop > 0) r += 300 * u.drop * u.drop;
     u.pos.copy(u.dir).multiplyScalar(r).add(pl.center);
     frameQuat(u.dir, u.fwd, u.quat);
