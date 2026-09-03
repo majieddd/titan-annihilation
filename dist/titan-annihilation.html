@@ -132,7 +132,7 @@ input[type=text]{font-family:inherit;background:rgba(0,0,0,.5);border:1px solid 
     <div id="fps"></div>
   </div>
   <div id="planetbar"></div>
-  <div id="styleWrap"><span>STYLE</span><select id="styleSel" title="Art style: [ and ] cycle"><option value="realism">Polished Realism</option><option value="cel">Cel Shaded</option><option value="spiderverse">Spider-Verse</option><option value="comic">Comic 3D</option><option value="bar">Beyond All Reason</option><option value="inksteel">Ink &amp; Steel</option><option value="reliquary">Reliquary</option><option value="coil">The Coil</option><option value="poly">Poly</option><option value="diorama">Diorama</option></select></div>
+  <div id="styleWrap"><span>STYLE</span><select id="styleSel" title="Art style: [ and ] cycle"><option value="realism">Polished Realism</option><option value="cel">Cel Shaded</option><option value="spiderverse">Spider-Verse</option><option value="comic">Comic 3D</option><option value="bar">Beyond All Reason</option><option value="inksteel">Ink &amp; Steel</option><option value="reliquary">Reliquary</option><option value="coil">The Coil</option><option value="poly">Poly</option><option value="dioramaink">Diorama Ink</option><option value="diorama">Diorama</option></select></div>
   <div id="modeTag"></div>
   <div id="alerts"></div>
   <div id="hint"></div>
@@ -154,7 +154,7 @@ input[type=text]{font-family:inherit;background:rgba(0,0,0,.5);border:1px solid 
     <div class="opt"><label>Seed</label><input type="text" id="optSeed" value=""><button id="btnRandom">Randomize</button></div>
     <div class="opt"><label>Planets</label><div class="seg" id="optPlanets"><button data-v="2">2</button><button data-v="3" class="active">3</button><button data-v="4">4</button></div></div>
     <div class="opt"><label>Quality</label><div class="seg" id="optQuality"><button data-v="medium">Medium</button><button data-v="high" class="active">High</button><button data-v="ultra">Ultra</button></div></div>
-    <div class="opt"><label>Style</label><div class="seg" id="optStyle"><button data-v="realism" class="active">Realism</button><button data-v="cel">Cel</button><button data-v="spiderverse">Spider-Verse</button><button data-v="comic">Comic</button><button data-v="bar">BAR</button><button data-v="inksteel">Ink &amp; Steel</button><button data-v="reliquary">Reliquary</button><button data-v="coil">Coil</button><button data-v="poly">Poly</button><button data-v="diorama">Diorama</button></div></div>
+    <div class="opt"><label>Style</label><div class="seg" id="optStyle"><button data-v="realism" class="active">Realism</button><button data-v="cel">Cel</button><button data-v="spiderverse">Spider-Verse</button><button data-v="comic">Comic</button><button data-v="bar">BAR</button><button data-v="inksteel">Ink &amp; Steel</button><button data-v="reliquary">Reliquary</button><button data-v="coil">Coil</button><button data-v="poly">Poly</button><button data-v="dioramaink">Diorama Ink</button><button data-v="diorama">Diorama</button></div></div>
     <div id="styleHint"></div>
     <button class="primary" id="launch">LAUNCH</button>
     <div id="help"><b>WASD / drag</b> orbit &nbsp; <b>Wheel</b> zoom (zoom out for the system view) &nbsp; <b>V</b> system view &nbsp; <b>Q/E</b> rotate &nbsp; <b>[ ]</b> art style<br><b>Left click / drag</b> select &nbsp; <b>Right click</b> move / attack (any planet) &nbsp; <b>A</b> attack-move &nbsp; <b>S</b> stop &nbsp; <b>N</b> nuke<br><b>Shift</b> queue / multi-place &nbsp; <b>Ctrl+1-9</b> groups &nbsp; <b>H</b> commander &nbsp; <b>Tab</b> idle fabber &nbsp; <b>P</b> pause<br>Orbital launchers build orbital fabbers that fly between planets. Link two teleporters to march ground armies across the system. Nukes hit any planet; anti-nukes stop them.</div>
@@ -165,8 +165,9 @@ input[type=text]{font-family:inherit;background:rgba(0,0,0,.5);border:1px solid 
 </div>
 <script type="module">
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -379,7 +380,7 @@ function makePeriodicWorley(seed) {
     out.f1 = Math.sqrt(f1); out.f2 = Math.sqrt(f2); out.id = id; return out;
   };
 }
-const VERSION = '3.4.2';
+const VERSION = '3.5.0';
 function cubicBezier(p0, p1, p2, p3, t, out) {
   const mt = 1 - t; const a = mt * mt * mt, b = 3 * mt * mt * t, c = 3 * mt * t * t, d = t * t * t;
   return out.set(p0.x * a + p1.x * b + p2.x * c + p3.x * d, p0.y * a + p1.y * b + p2.y * c + p3.y * d, p0.z * a + p1.z * b + p2.z * c + p3.z * d);
@@ -897,6 +898,14 @@ const STYLES = [
     world: { detail: 7, grass: false, cards: false },
   },
   {
+    id: 'dioramaink', name: 'Diorama Ink', hint: 'The war table drawn in ink: matte clay miniatures with rim light and tilt-shift focus, wearing the comic\'s heavy black outlines and crosshatched shadows.',
+    mat: { lod: 1.2, normal: 0.6, poster: 0, sat: 1.3, bands: 0, soft: 0.06, ambient: 1, spec: 0.45, hatch: 0.6, halftone: 0, outline: 0.4, clay: 1, faction: 0, tooth: 0, jitter: 0, rim: 0, rimColor: V(1, 1, 1), tile: 0, flat: 0, fxGain: 0.9, shadowTint: V(0.78, 0.8, 0.96), litTint: V(1.04, 1.0, 0.94) },
+    light: { sun: 3.7, sunColor: 0xffe6c8, hemi: 0.36, env: 0.75, fill: 0.5, fillColor: 0xa8c8ff },
+    atmo: { aerial: 0.15, sunI: 0.7 },
+    post: { tone: 'aces', exposure: 1.08, gtao: true, bloom: [0.14, 0.5, 0.9], edge: { thick: 2.4, depthT: 0.04, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0 }, halftone: null, tilt: { amount: 5, focus: 0.5, width: 0.2 },
+      grade: { sat: 1.16, con: 1.12, vig: 0.5, sharp: 0.2, ca: 0.004, grain: 0.04, poster: 0, paper: 0.12, shadowTint: V(0.96, 0.97, 1.03), highTint: V(1.04, 1.0, 0.95) } },
+  },
+  {
     id: 'diorama', name: 'Diorama', hint: 'Original: a war table of painted miniatures — matte clay surfaces, studio key and fill lights, tilt-shift focus, no haze.',
     mat: { lod: 1.2, normal: 0.6, poster: 0, sat: 1.28, bands: 0, soft: 0.06, ambient: 1, spec: 0.45, hatch: 0, halftone: 0, outline: 0.15, clay: 1, faction: 0, shadowTint: V(0.8, 0.82, 0.96), litTint: V(1.04, 1.0, 0.94) },
     light: { sun: 3.6, sunColor: 0xffe6c8, hemi: 0.3, env: 0.7, fill: 0.5, fillColor: 0xa8c8ff },
@@ -1168,7 +1177,8 @@ function injectFog(mat, uniforms, key) {
     shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vAtW;').replace('#include <project_vertex>', '#include <project_vertex>\nvec4 atwp = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\natwp = instanceMatrix * atwp;\n#endif\nvAtW = (modelMatrix * atwp).xyz;');
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + ATMO_GLSL + '\n' + STYLE_GLSL + '\nvarying vec3 vAtW;')
       .replace('#include <alphamap_fragment>', 'diffuseColor.rgb = stSat(stPoster(diffuseColor.rgb, uStPoster), uStSat);\n#include <alphamap_fragment>')
-      .replace('#include <emissivemap_fragment>', 'normal = normalize(mix(nonPerturbedNormal, normal, uStNormal));\n#ifndef USE_ALPHATEST\nif (uStFlat > 0.5) { vec3 stFn = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition))); if (dot(stFn, nonPerturbedNormal) < 0.0) stFn = -stFn; normal = stFn; }\n#endif\n#include <emissivemap_fragment>')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, max(roughnessFactor, 0.72), smoothstep(70.0, 300.0, length(vViewPosition)));')
+      .replace('#include <emissivemap_fragment>', 'normal = normalize(mix(nonPerturbedNormal, normal, uStNormal * (1.0 - 0.9 * smoothstep(70.0, 300.0, length(vViewPosition)))));\n#ifndef USE_ALPHATEST\nif (uStFlat > 0.5) { vec3 stFn = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition))); if (dot(stFn, nonPerturbedNormal) < 0.0) stFn = -stFn; normal = stFn; }\n#endif\n#include <emissivemap_fragment>')
       .replace('#include <opaque_fragment>', STYLE_LIGHT_GLSL + '\n#include <opaque_fragment>')
       .replace('#include <tonemapping_fragment>', '{ vec3 atT, atS; atAerial(cameraPosition, vAtW, atT, atS); gl_FragColor.rgb = gl_FragColor.rgb * atT + atS; }\n#include <tonemapping_fragment>');
   };
@@ -1236,6 +1246,8 @@ function makeTerrainMaterial(planet, tA, tB, tC) {
         float el = length(vLPos) - uR;
         float strata = 0.5 + 0.5 * sin(el * 1.4 + hB * 5.0 + hA * 2.0);
         det *= mix(1.0, 0.84 + 0.3 * strata, w.y);
+        float stFade = smoothstep(70.0, 320.0, length(vViewPosition));
+        det = mix(det, vec3(dot(det, vec3(0.3333))), stFade * 0.75);
         diffuseColor.rgb *= det * uAlb;`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         roughnessFactor = clamp(na.a * w.x + nb.a * w.y + nc.a * w.z, 0.05, 1.0);
@@ -1543,11 +1555,17 @@ class Planet {
           float w2 = noise(vL*1.1 - uTime*0.3);
           vec3 bw = pow(abs(n), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
           vec3 n1 = wnSample(vL * 0.03 + vec3(uTime * 0.012, 0.0, uTime * 0.009), n, bw); vec3 n2 = wnSample(vL * 0.11 - vec3(uTime * 0.02, uTime * 0.007, 0.0), n, bw);
-          vec3 np = normalize(mix(n, normalize(n1 * 0.5 + n2 * 0.8), 0.16));
+          // Ripple strength falls off with range: a wave normal finer than a pixel turns the
+          // Fresnel term into per-pixel noise, which is what put swimming grain across the water.
+          float wDist = length(vW - cameraPosition); float wNear = 1.0 - smoothstep(35.0, 220.0, wDist);
+          vec3 np = normalize(mix(n, normalize(n1 * 0.5 + n2 * 0.8), 0.16 * wNear));
           if (uStFlat > 0.5) { vec3 fn = normalize(cross(dFdx(vW), dFdy(vW))); if (dot(fn, n) < 0.0) fn = -fn; n = fn; np = fn; }
-          float NoV = max(dot(np, v), 0.0); float fres = 0.02 + 0.98 * pow(1.0 - NoV, 5.0);
+          // Fresnel drives a bright sky reflection, so it has to come from the SMOOTH normal or a
+          // sub-pixel ripple flips neighbouring pixels between mirror and water.
+          float NoV = max(dot(n, v), 0.0); float fres = 0.02 + 0.98 * pow(1.0 - NoV, 5.0);
           float diff = max(dot(n, uSun), 0.0);
-          vec3 h = normalize(uSun + v); float NoH = max(dot(np, h), 0.0); float spec = pow(NoH, 700.0) * 3.0 + pow(NoH, 48.0) * 0.06;
+          // A 700-power lobe is thinner than a pixel at this scale and sparkled at random.
+          vec3 h = normalize(uSun + v); float NoH = max(dot(np, h), 0.0); float spec = (pow(NoH, 160.0) * 1.2 + pow(NoH, 36.0) * 0.08) * mix(0.25, 1.0, wNear);
           float depth = max(vD, 0.0);
           if (uLava > 0.5) {
             float crack = noise(vL*0.35 + uTime*0.08); crack = smoothstep(0.3,0.8,crack + 0.35*(w2-0.5));
@@ -1558,15 +1576,21 @@ class Planet {
             gl_FragColor = vec4(col, 1.0);
           } else {
             // reflection of the real scattered sky along the reflected ray (kept above the horizon)
-            vec3 r = reflect(-v, np); float rn = dot(r, n); if (rn < 0.03) r = normalize(r + n * (0.03 - rn));
+            // Reflect about the SMOOTH normal. Using the wave-perturbed normal made neighbouring
+            // pixels sample wildly different sky rays, which read as swimming salt-and-pepper noise
+            // over water and over any ground lying below the sea sphere.
+            vec3 r = reflect(-v, n); float rn = dot(r, n); if (rn < 0.05) r = normalize(r + n * (0.05 - rn));
             vec3 ro = n * (uAtR + 0.05); vec3 skyR = atSky(ro, r) + vec3(0.004, 0.005, 0.009);
             float shallow = 1.0 - smoothstep(0.0, 6.0, depth);
             vec3 shallowCol = uColor * 1.1 + vec3(0.04, 0.10, 0.06);
             vec3 body = mix(uDeep, uColor, 0.35); body = mix(body, shallowCol, shallow * 0.7);
-            float foamN = noise(vL*1.7 + uTime*0.35) + 0.5*noise(vL*4.0 - uTime*0.6);
+            float foamN = noise(vL*0.9 + uTime*0.35) + 0.5*noise(vL*2.0 - uTime*0.6);
             float foam = (1.0 - smoothstep(0.0, 0.9, depth + (foamN - 0.75) * 0.9)) * 0.7;
             vec3 col = body * (0.05 + 0.55 * diff) * (1.0 - fres) + skyR * fres * 0.9 + vec3(1.0) * spec * step(0.001, diff) + vec3(0.85) * foam * (0.2 + 0.8 * diff);
-            float alpha = mix(0.55, 0.96, smoothstep(0.0, 4.0, depth)) + foam * 0.4; alpha = mix(alpha, 1.0, fres);
+            // Water used to stay translucent for four units of depth, which let the minified lake
+            // bed read through as swimming grain (the drifting speckle over water and low ground).
+            // Go opaque quickly, keeping a translucent lip right at the shoreline.
+            float alpha = mix(0.88, 1.0, smoothstep(0.0, 1.1, depth)) + foam * 0.3; alpha = mix(alpha, 1.0, fres);
             gl_FragColor = vec4(col, clamp(alpha, 0.0, 1.0));
           }
           gl_FragColor.rgb = stSat(gl_FragColor.rgb, uStSat); if (uStBands > 0.5) { vec3 c2 = gl_FragColor.rgb / (1.0 + gl_FragColor.rgb); c2 = stPoster(c2, uStBands + 2.0); gl_FragColor.rgb = c2 / max(1.0 - c2, 1e-3); }
@@ -1586,13 +1610,22 @@ class Planet {
   buildProps(tex) {
     const b = this.biome; const R = this.R; const rng = this.rng; const nav = this.nav; const area = (R / 320) * (R / 320);
     const kinds = [];
+    // Displacing the corners of a NON-INDEXED mesh moves each triangle's copy of a shared corner
+    // independently, which pulls the solid apart into loose floating triangles (this is why bushes
+    // and boulders looked shattered). Weld first so one corner moves once, then split for flat facets.
     const jitter = (g, amt) => { const p = g.getAttribute('position'); for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i) + (rng() - .5) * amt, p.getY(i) + (rng() - .5) * amt, p.getZ(i) + (rng() - .5) * amt); g.computeVertexNormals(); return g; };
+    const lumpy = (g, amt) => { const welded = g.index ? g : mergeVertices(g, 1e-4); jitter(welded, amt); const out = welded.toNonIndexed(); out.computeVertexNormals(); return out; };
     const colorize = (g, c) => { const n = g.getAttribute('position').count; const col = new Float32Array(n * 3); for (let i = 0; i < n; i++) { col[i * 3] = c[0]; col[i * 3 + 1] = c[1]; col[i * 3 + 2] = c[2]; } g.setAttribute('color', new THREE.BufferAttribute(col, 3)); return g; };
-    const rockGeo = () => { const g = new THREE.IcosahedronGeometry(1, 2).toNonIndexed(); g.deleteAttribute('uv'); jitter(g, 0.42); g.translate(0, 0.35, 0); const rc = RAMPS[b.palette].rock; return colorize(g, [rc[0] * 1.15, rc[1] * 1.15, rc[2] * 1.15]); };
+    const rockGeo = () => { const g = lumpy(new THREE.IcosahedronGeometry(1, 2), 0.42); g.deleteAttribute('uv'); g.translate(0, 0.35, 0); const rc = RAMPS[b.palette].rock; return colorize(g, [rc[0] * 1.15, rc[1] * 1.15, rc[2] * 1.15]); };
     if (b.props === 'earth') {
       const trunk = colorize(new THREE.CylinderGeometry(0.14, 0.22, 1.5, 5).toNonIndexed(), [0.28, 0.18, 0.1]); trunk.deleteAttribute('uv'); trunk.translate(0, 0.75, 0);
       const cross = new THREE.BufferGeometry(); { const pos = [], uv = [], nrm = []; const hw = 1.35, y0 = 0.25, y1 = 5.6; for (let i = 0; i < 3; i++) { const a = i * Math.PI / 3; const dx = Math.cos(a) * hw, dz = Math.sin(a) * hw; const q = [[-dx, y0, -dz, 0, 0], [dx, y0, dz, 0.5, 0], [dx, y1, dz, 0.5, 1], [-dx, y0, -dz, 0, 0], [dx, y1, dz, 0.5, 1], [-dx, y1, -dz, 0, 1]]; for (const [x, y, z, u, v] of q) { pos.push(x, y, z); uv.push(u, v); const nn = new THREE.Vector3(x * 0.5, 0.85, z * 0.5).normalize(); nrm.push(nn.x, nn.y, nn.z); } }
-        { const hw2 = 1.45, yt = 2.6; const q = [[-hw2, yt, -hw2, 0.5, 0], [hw2, yt, -hw2, 1, 0], [hw2, yt, hw2, 1, 1], [-hw2, yt, -hw2, 0.5, 0], [hw2, yt, hw2, 1, 1], [-hw2, yt, hw2, 0.5, 1]]; for (const [x, y, z, u, v] of q) { pos.push(x, y, z); uv.push(u, v); nrm.push(0, 1, 0); } } cross.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); cross.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); cross.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); }
+        // Horizontal cards let the tree read from directly above. A single wide one at mid-height
+        // looked like a disc skewered on the trunk, so use a few small ones climbing to the crown.
+        for (const [t, hw2] of [[0.42, 0.95], [0.66, 0.68], [0.88, 0.42]]) { const yt = y0 + (y1 - y0) * t; const ca = Math.cos(t * 5.1), sa = Math.sin(t * 5.1);
+          const corner = (sx, sz) => [ (sx * hw2) * ca - (sz * hw2) * sa, yt, (sx * hw2) * sa + (sz * hw2) * ca ];
+          const q = [[-1, -1, 0.5, 0], [1, -1, 1, 0], [1, 1, 1, 1], [-1, -1, 0.5, 0], [1, 1, 1, 1], [-1, 1, 0.5, 1]];
+          for (const [sx, sz, u, v] of q) { const c = corner(sx, sz); pos.push(c[0], c[1], c[2]); uv.push(u, v); nrm.push(0, 1, 0); } } cross.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); cross.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); cross.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); }
       const forest = (d) => this.noise.fbm(d.x * 5 + 3, d.y * 5, d.z * 5, 3);
       const coneTree = () => { const c1 = colorize(new THREE.ConeGeometry(1.15, 2.2, 6).toNonIndexed(), [0.1, 0.3, 0.12]); c1.deleteAttribute('uv'); c1.translate(0, 2.0, 0);
         const c2 = colorize(new THREE.ConeGeometry(0.9, 2.0, 6).toNonIndexed(), [0.13, 0.36, 0.14]); c2.deleteAttribute('uv'); c2.translate(0, 3.1, 0);
@@ -1602,9 +1635,9 @@ class Planet {
       const trunk2 = colorize(new THREE.CylinderGeometry(0.16, 0.3, 2.6, 7).toNonIndexed(), [0.3, 0.2, 0.12]); trunk2.deleteAttribute('uv'); trunk2.translate(0, 1.3, 0);
       const branches = []; for (let i = 0; i < 4; i++) { const br = colorize(new THREE.CylinderGeometry(0.06, 0.12, 1.6, 5).toNonIndexed(), [0.28, 0.19, 0.11]); br.deleteAttribute('uv'); br.translate(0, 0.8, 0); br.rotateZ(0.7 + rng() * 0.5); br.rotateY(i * Math.PI / 2 + rng() * 0.6); br.translate(0, 2.2 + rng() * 0.5, 0); branches.push(br); }
       const cards = new THREE.BufferGeometry(); { const pos = [], uv = [], nrm = []; for (let i = 0; i < 14; i++) { const cx = (rng() - 0.5) * 1.5, cy = 3.2 + (rng() - 0.5) * 1.3, cz = (rng() - 0.5) * 1.5; const sz = 1.3 + rng() * 0.7; const ax = rng() * Math.PI, ay = rng() * Math.PI * 2; const u = new THREE.Vector3(Math.cos(ay), 0, Math.sin(ay)); const vv = new THREE.Vector3(0, Math.cos(ax), Math.sin(ax)); const nn = new THREE.Vector3(cx, cy - 3.1 + 0.8, cz).normalize(); const corners = [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]]; for (const [a, b2] of corners) { pos.push(cx + (u.x * a + vv.x * b2) * sz / 2, cy + (u.y * a + vv.y * b2) * sz / 2, cz + (u.z * a + vv.z * b2) * sz / 2); uv.push(a * 0.5 + 0.5, b2 * 0.5 + 0.5); nrm.push(nn.x, nn.y, nn.z); } } cards.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); cards.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); cards.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); }
-      const blobCanopy = () => { const cn = colorize(jitter(new THREE.IcosahedronGeometry(1.5, 1).toNonIndexed(), 0.5), [0.18, 0.4, 0.14]); cn.deleteAttribute('uv'); cn.translate(0, 3.2, 0); return mergeGeometries([trunk2.clone(), cn], false); };
+      const blobCanopy = () => { const cn = colorize(lumpy(new THREE.IcosahedronGeometry(1.5, 1), 0.5), [0.18, 0.4, 0.14]); cn.deleteAttribute('uv'); cn.translate(0, 3.2, 0); return mergeGeometries([trunk2.clone(), cn], false); };
       kinds.push(PROP_CARDS ? { geo: mergeGeometries([trunk2, ...branches], false), canopy: cards, bark: true, count: Math.round(2600 * area), tries: 40, test: (e, s, d) => e > 1.4 && e < 10 && s < 0.3 && forest(d) > -0.04, scale: [0.8, 1.5], stretch: 1, tree: true } : { geo: blobCanopy(), count: Math.round(2600 * area), tries: 40, test: (e, s, d) => e > 1.4 && e < 10 && s < 0.3 && forest(d) > -0.04, scale: [0.8, 1.5], stretch: 1, tree: true });
-      const bush = colorize(jitter(new THREE.IcosahedronGeometry(0.8, 1).toNonIndexed(), 0.3), [0.2, 0.38, 0.13]); bush.deleteAttribute('uv'); bush.translate(0, 0.45, 0);
+      const bush = colorize(lumpy(new THREE.IcosahedronGeometry(0.8, 1), 0.3), [0.2, 0.38, 0.13]); bush.deleteAttribute('uv'); bush.translate(0, 0.45, 0);
       kinds.push({ geo: bush, count: Math.round(2400 * area), test: (e, s) => e > 1.2 && e < 11 && s < 0.45, scale: [0.6, 1.4], stretch: 0.8, tree: true });
       kinds.push({ geo: rockGeo(), count: Math.round(1200 * area), test: (e, s) => e > 1.0 && (s > 0.25 || rng() < 0.2), scale: [0.6, 3.2], stretch: 0.7, stone: true });
     } else if (b.props === 'ice') {
@@ -4258,7 +4291,7 @@ app.renderer = renderer;
 const scene = new THREE.Scene(); app.scene = scene;
 const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 80000);
 const sun = new THREE.DirectionalLight(0xfff1dc, 3.1); sun.castShadow = true;
-sun.shadow.bias = -0.00006; sun.shadow.normalBias = 0.06; sun.shadow.camera.near = 100; sun.shadow.camera.far = 1300;
+sun.shadow.bias = -0.00025; sun.shadow.normalBias = 0.22; sun.shadow.camera.near = 100; sun.shadow.camera.far = 1300;
 scene.add(sun); scene.add(sun.target);
 const hemi = new THREE.HemisphereLight(0x8fb4ff, 0x3a2a1a, 0.15); scene.add(hemi);
 const fill = new THREE.DirectionalLight(0xa8c8ff, 0); fill.castShadow = false; scene.add(fill); scene.add(fill.target);
@@ -4347,9 +4380,16 @@ app.setStyle = (id) => {
   if (app.system) for (const pl of app.system.planets) { if (!pl.atBase) pl.atBase = { I: pl.uniforms.uAtI.value, K: pl.uniforms.uAtK.value }; pl.uniforms.uAtI.value = pl.atBase.I * st.atmo.sunI; pl.uniforms.uAtK.value = pl.atBase.K * st.atmo.aerial; }
   envT = -1e9; if (app.ui) app.ui.syncStyle();
   // a style that asks for a different world mesh: rebuild now in the menu, otherwise it applies on the next launch
+  // A style may ask for a different world mesh (Poly drops a subdivision and swaps card foliage for
+  // solid trees). Rebuild for it immediately rather than leaving the player on the wrong mesh: in the
+  // menu that is a regenerate, in a match it restarts the match, which is what picking a look mid-game
+  // is asking for.
   const wantDetail = (st.world && st.world.detail) || (app.settings.quality === 'medium' ? 7 : 8);
   const wantCards = !(st.world && st.world.cards === false);
-  if (app.system && app.worldDetail && (wantDetail !== app.worldDetail || wantCards !== app.worldCards)) { if (app.state === 'menu' && !app.generating) app.regenPlanet(); else if (app.ui && app.ui.hint) app.ui.hint('Mesh detail for this style applies on the next launch'); }
+  if (app.system && app.worldDetail && !app.generating && (wantDetail !== app.worldDetail || wantCards !== app.worldCards)) {
+    if (app.state === 'menu') app.regenPlanet();
+    else { if (app.ui && app.ui.hint) app.ui.hint('Rebuilding the world for ' + st.name); app.startGame(); }
+  }
 };
 app.cycleStyle = (dir) => { const i = STYLES.findIndex((s) => s.id === (app.style ? app.style.id : app.settings.style)); app.setStyle(STYLES[(i + dir + STYLES.length) % STYLES.length].id); };
 

@@ -4,6 +4,13 @@ Standalone builds of each version live in `versions/` (double-click to play; nee
 The published artifact keeps its own version picker as well (labels match the entries below).
 The in-game menu shows the version number under the title.
 
+## v3.5.0 — 2026-09-03 — Diorama Ink style; trees, foliage and water artefacts fixed
+- **Diorama Ink**, an eleventh style: the Diorama war table wearing the Comic's ink. Matte clay surfaces with rim light, warm studio key plus cool fill, tilt-shift focus band and no haze, under heavy black outlines and crosshatched shadows.
+- **Trees**: the conifers carried one wide horizontal card at mid-height so they read as a disc skewered on the trunk. Replaced with three small cards climbing to the crown, each rotated, so they still read from directly above without the ring.
+- **Bushes and boulders**: displacing the corners of a non-indexed mesh moves every triangle's own copy of a shared corner independently, which pulled the solids apart into loose floating triangles. The vertices are welded before displacement and split again afterwards for flat facets, so bushes, boulders and the Poly style's canopies are solid again.
+- **Drifting speckle over water and low ground**: the water stayed translucent for four units of depth, so the minified lake bed showed through as swimming grain that crawled with the camera. Water now reaches opacity within about one unit of depth, keeping a translucent lip at the shoreline. Also traced and fixed on the way: the shadow bias from v3.4.1 was far enough the other way to let terrain shadow itself into speckle (now 0.22, between the detached 0.5 and the noisy 0.06), the water's Fresnel term is driven by the smooth normal instead of a sub-pixel ripple, ripple strength and sun glitter fade with range, and terrain normal, roughness and albedo detail are damped with distance to stop specular sparkle.
+- **Mesh changes apply immediately**: picking a style that wants a different world mesh no longer says it will take effect later. In the menu it regenerates, and in a match it rebuilds and restarts the match.
+
 ## v3.4.2 — 2026-09-03 — Metal spot pads lit per planet
 - The metal-spot pads were one shared instanced mesh, so they could only carry one sun direction and pads on every planet except the focused one were lit from the wrong side. Each planet now gets its own pad mesh bound to its own sun, alongside the atmosphere and art style it already took. The glow rings stay a single mesh because they are unlit additive sprites.
 

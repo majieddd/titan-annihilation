@@ -177,6 +177,14 @@ export const STYLES = [
     world: { detail: 7, grass: false, cards: false },
   },
   {
+    id: 'dioramaink', name: 'Diorama Ink', hint: 'The war table drawn in ink: matte clay miniatures with rim light and tilt-shift focus, wearing the comic\'s heavy black outlines and crosshatched shadows.',
+    mat: { lod: 1.2, normal: 0.6, poster: 0, sat: 1.3, bands: 0, soft: 0.06, ambient: 1, spec: 0.45, hatch: 0.6, halftone: 0, outline: 0.4, clay: 1, faction: 0, tooth: 0, jitter: 0, rim: 0, rimColor: V(1, 1, 1), tile: 0, flat: 0, fxGain: 0.9, shadowTint: V(0.78, 0.8, 0.96), litTint: V(1.04, 1.0, 0.94) },
+    light: { sun: 3.7, sunColor: 0xffe6c8, hemi: 0.36, env: 0.75, fill: 0.5, fillColor: 0xa8c8ff },
+    atmo: { aerial: 0.15, sunI: 0.7 },
+    post: { tone: 'aces', exposure: 1.08, gtao: true, bloom: [0.14, 0.5, 0.9], edge: { thick: 2.4, depthT: 0.04, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0 }, halftone: null, tilt: { amount: 5, focus: 0.5, width: 0.2 },
+      grade: { sat: 1.16, con: 1.12, vig: 0.5, sharp: 0.2, ca: 0.004, grain: 0.04, poster: 0, paper: 0.12, shadowTint: V(0.96, 0.97, 1.03), highTint: V(1.04, 1.0, 0.95) } },
+  },
+  {
     id: 'diorama', name: 'Diorama', hint: 'Original: a war table of painted miniatures — matte clay surfaces, studio key and fill lights, tilt-shift focus, no haze.',
     mat: { lod: 1.2, normal: 0.6, poster: 0, sat: 1.28, bands: 0, soft: 0.06, ambient: 1, spec: 0.45, hatch: 0, halftone: 0, outline: 0.15, clay: 1, faction: 0, shadowTint: V(0.8, 0.82, 0.96), litTint: V(1.04, 1.0, 0.94) },
     light: { sun: 3.6, sunColor: 0xffe6c8, hemi: 0.3, env: 0.7, fill: 0.5, fillColor: 0xa8c8ff },

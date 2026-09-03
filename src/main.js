@@ -40,7 +40,7 @@ app.renderer = renderer;
 const scene = new THREE.Scene(); app.scene = scene;
 const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 80000);
 const sun = new THREE.DirectionalLight(0xfff1dc, 3.1); sun.castShadow = true;
-sun.shadow.bias = -0.00006; sun.shadow.normalBias = 0.06; sun.shadow.camera.near = 100; sun.shadow.camera.far = 1300;
+sun.shadow.bias = -0.00025; sun.shadow.normalBias = 0.22; sun.shadow.camera.near = 100; sun.shadow.camera.far = 1300;
 scene.add(sun); scene.add(sun.target);
 const hemi = new THREE.HemisphereLight(0x8fb4ff, 0x3a2a1a, 0.15); scene.add(hemi);
 const fill = new THREE.DirectionalLight(0xa8c8ff, 0); fill.castShadow = false; scene.add(fill); scene.add(fill.target);
@@ -129,9 +129,16 @@ app.setStyle = (id) => {
   if (app.system) for (const pl of app.system.planets) { if (!pl.atBase) pl.atBase = { I: pl.uniforms.uAtI.value, K: pl.uniforms.uAtK.value }; pl.uniforms.uAtI.value = pl.atBase.I * st.atmo.sunI; pl.uniforms.uAtK.value = pl.atBase.K * st.atmo.aerial; }
   envT = -1e9; if (app.ui) app.ui.syncStyle();
   // a style that asks for a different world mesh: rebuild now in the menu, otherwise it applies on the next launch
+  // A style may ask for a different world mesh (Poly drops a subdivision and swaps card foliage for
+  // solid trees). Rebuild for it immediately rather than leaving the player on the wrong mesh: in the
+  // menu that is a regenerate, in a match it restarts the match, which is what picking a look mid-game
+  // is asking for.
   const wantDetail = (st.world && st.world.detail) || (app.settings.quality === 'medium' ? 7 : 8);
   const wantCards = !(st.world && st.world.cards === false);
-  if (app.system && app.worldDetail && (wantDetail !== app.worldDetail || wantCards !== app.worldCards)) { if (app.state === 'menu' && !app.generating) app.regenPlanet(); else if (app.ui && app.ui.hint) app.ui.hint('Mesh detail for this style applies on the next launch'); }
+  if (app.system && app.worldDetail && !app.generating && (wantDetail !== app.worldDetail || wantCards !== app.worldCards)) {
+    if (app.state === 'menu') app.regenPlanet();
+    else { if (app.ui && app.ui.hint) app.ui.hint('Rebuilding the world for ' + st.name); app.startGame(); }
+  }
 };
 app.cycleStyle = (dir) => { const i = STYLES.findIndex((s) => s.id === (app.style ? app.style.id : app.settings.style)); app.setStyle(STYLES[(i + dir + STYLES.length) % STYLES.length].id); };
 
