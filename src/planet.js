@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clamp, lerp, smoothstep, mulberry32, Simplex, MinHeap, angleBetween, tangentToward, moveOnSphere, rotateTangent, anyTangent, frameQuat, TAU } from './util.js';
 import { detailTexture, cloudTexture, cloudNormalTexture, waterNormalTexture, leafClusterTexture, coniferTexture } from './textures.js';
 import { getTextureSet } from './assets.js';
+import { STYLE_U, STYLE_GLSL, STYLE_LIGHT_GLSL } from './style.js';
 import { GrassField } from './foliage.js';
 
 export const BIOMES = {
@@ -156,10 +157,15 @@ export function injectFog(mat, uniforms, key) {
   mat.onBeforeCompile = (shader, renderer) => {
     if (prev) prev(shader, renderer);
     for (const k of AT_KEYS) shader.uniforms[k] = uniforms[k];
+    for (const k in STYLE_U) shader.uniforms[k] = STYLE_U[k];
     shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vAtW;').replace('#include <project_vertex>', '#include <project_vertex>\nvec4 atwp = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\natwp = instanceMatrix * atwp;\n#endif\nvAtW = (modelMatrix * atwp).xyz;');
-    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + ATMO_GLSL + '\nvarying vec3 vAtW;').replace('#include <tonemapping_fragment>', '{ vec3 atT, atS; atAerial(cameraPosition, vAtW, atT, atS); gl_FragColor.rgb = gl_FragColor.rgb * atT + atS; }\n#include <tonemapping_fragment>');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + ATMO_GLSL + '\n' + STYLE_GLSL + '\nvarying vec3 vAtW;')
+      .replace('#include <alphamap_fragment>', 'diffuseColor.rgb = stSat(stPoster(diffuseColor.rgb, uStPoster), uStSat);\n#include <alphamap_fragment>')
+      .replace('#include <emissivemap_fragment>', 'normal = normalize(mix(nonPerturbedNormal, normal, uStNormal));\n#include <emissivemap_fragment>')
+      .replace('#include <opaque_fragment>', STYLE_LIGHT_GLSL + '\n#include <opaque_fragment>')
+      .replace('#include <tonemapping_fragment>', '{ vec3 atT, atS; atAerial(cameraPosition, vAtW, atT, atS); gl_FragColor.rgb = gl_FragColor.rgb * atT + atS; }\n#include <tonemapping_fragment>');
   };
-  mat.customProgramCacheKey = () => key + '_atmo';
+  mat.customProgramCacheKey = () => key + '_atmo_style';
   return mat;
 }
 const BLACK_TEX = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1); BLACK_TEX.needsUpdate = true;
@@ -174,10 +180,10 @@ function injectStone(mat, tex) {
         uniform sampler2D tS, tSN; varying vec3 vSPos; varying vec3 vSNrm; varying vec3 vR0; varying vec3 vR1; varying vec3 vR2;`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         vec3 sn = normalize(vSNrm); vec3 sw = pow(abs(sn), vec3(6.0)); sw /= (sw.x + sw.y + sw.z); vec3 sp = vSPos * 0.55;
-        vec3 sd = texture2D(tS, sp.zy).rgb * sw.x + texture2D(tS, sp.xz).rgb * sw.y + texture2D(tS, sp.xy).rgb * sw.z;
+        vec3 sd = texture2D(tS, sp.zy, uStLod).rgb * sw.x + texture2D(tS, sp.xz, uStLod).rgb * sw.y + texture2D(tS, sp.xy, uStLod).rgb * sw.z;
         diffuseColor.rgb *= sd * 1.25;`)
       .replace('#include <normal_fragment_maps>', `
-        vec3 sx = texture2D(tSN, sp.zy).xyz * 2.0 - 1.0; vec3 sy = texture2D(tSN, sp.xz).xyz * 2.0 - 1.0; vec3 sz = texture2D(tSN, sp.xy).xyz * 2.0 - 1.0;
+        vec3 sx = texture2D(tSN, sp.zy, uStLod).xyz * 2.0 - 1.0; vec3 sy = texture2D(tSN, sp.xz, uStLod).xyz * 2.0 - 1.0; vec3 sz = texture2D(tSN, sp.xy, uStLod).xyz * 2.0 - 1.0;
         sx = vec3(sx.xy + sn.zy, abs(sx.z) * sn.x); sy = vec3(sy.xy + sn.xz, abs(sy.z) * sn.y); sz = vec3(sz.xy + sn.xy, abs(sz.z) * sn.z);
         vec3 son = normalize(mix(sn, normalize(sx.zyx * sw.x + sy.xzy * sw.y + sz.xyz * sw.z), 0.8));
         mat3 srot = mat3(normalize(vR0), normalize(vR1), normalize(vR2));
@@ -199,10 +205,10 @@ function makeTerrainMaterial(planet, tA, tB, tC) {
       .replace('#include <common>', `#include <common>
         uniform sampler2D tA, tAN, tB, tBN, tC, tCN, tBE; uniform float uTexScale, uR, uLava, uSea, uHasBE, uAlb;
         varying vec3 vMat; varying vec3 vLPos; varying vec3 vLNrm;
-        vec4 tri(sampler2D t, vec3 p, vec3 w) { return texture2D(t, p.zy) * w.x + texture2D(t, p.xz) * w.y + texture2D(t, p.xy) * w.z; }
-        vec4 triR(sampler2D t, vec3 p, vec3 w) { return texture2D(t, p.yz) * w.x + texture2D(t, p.zx) * w.y + texture2D(t, p.yx) * w.z; }
+        vec4 tri(sampler2D t, vec3 p, vec3 w) { return texture2D(t, p.zy, uStLod) * w.x + texture2D(t, p.xz, uStLod) * w.y + texture2D(t, p.xy, uStLod) * w.z; }
+        vec4 triR(sampler2D t, vec3 p, vec3 w) { return texture2D(t, p.yz, uStLod) * w.x + texture2D(t, p.zx, uStLod) * w.y + texture2D(t, p.yx, uStLod) * w.z; }
         vec4 triN(sampler2D t, vec3 p, vec3 n, vec3 w) {
-          vec4 sx = texture2D(t, p.zy); vec4 sy = texture2D(t, p.xz); vec4 sz = texture2D(t, p.xy);
+          vec4 sx = texture2D(t, p.zy, uStLod); vec4 sy = texture2D(t, p.xz, uStLod); vec4 sz = texture2D(t, p.xy, uStLod);
           float r = (sx.a * w.x + sy.a * w.y + sz.a * w.z - 0.3) / 0.7;
           vec3 tx = sx.xyz * 2.0 - 1.0; vec3 ty = sy.xyz * 2.0 - 1.0; vec3 tz = sz.xyz * 2.0 - 1.0;
           tx = vec3(tx.xy + n.zy, abs(tx.z) * n.x); ty = vec3(ty.xy + n.xz, abs(ty.z) * n.y); tz = vec3(tz.xy + n.xy, abs(tz.z) * n.z);
@@ -231,7 +237,7 @@ function makeTerrainMaterial(planet, tA, tB, tC) {
         vec3 wn = normalize(mix(gn, normalize(na.xyz * w.x + nb.xyz * w.y + nc.xyz * w.z), 0.9));
         normal = normalize((viewMatrix * vec4(wn, 0.0)).xyz);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-        if (uLava > 0.5) { vec3 em = uHasBE > 0.5 ? pow(tri(tBE, p1, bw).rgb, vec3(1.6)) * 1.6 : smoothstep(0.16, 0.04, hB) * vec3(1.0, 0.42, 0.08) * 2.4; totalEmissiveRadiance += w.y * em; }`);
+        if (uLava > 0.5) { vec3 em = uHasBE > 0.5 ? pow(tri(tBE, p1, bw).rgb, vec3(1.6)) * 1.6 : (1.0 - smoothstep(0.04, 0.16, hB)) * vec3(1.0, 0.42, 0.08) * 2.4; totalEmissiveRadiance += w.y * em; }`);
   };
   injectSun(mat, U.uSunView, 'terrain_v4'); injectFog(mat, U, 'terrain_v4_sun');
   return mat;
@@ -459,11 +465,11 @@ export class Planet {
     if (b.sea) this.buildWater();
     // physically based sky: single-scattering shell, additive over space, occluded by terrain
     const U = this.uniforms;
-    const sm = new THREE.ShaderMaterial({ uniforms: atmoUniformsOf(U), side: THREE.BackSide, transparent: true, depthWrite: false, depthTest: true, blending: THREE.AdditiveBlending,
+    const sm = new THREE.ShaderMaterial({ uniforms: Object.assign(atmoUniformsOf(U), STYLE_U), side: THREE.BackSide, transparent: true, depthWrite: false, depthTest: true, blending: THREE.AdditiveBlending,
       vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix*vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix*viewMatrix*w; }',
-      fragmentShader: ATMO_GLSL + `
+      fragmentShader: ATMO_GLSL + STYLE_GLSL + `
         varying vec3 vW;
-        void main(){ vec3 ro = cameraPosition - uAtC; vec3 rd = normalize(vW - cameraPosition); vec3 col = atSky(ro, rd); gl_FragColor = vec4(col, 1.0);
+        void main(){ vec3 ro = cameraPosition - uAtC; vec3 rd = normalize(vW - cameraPosition); vec3 col = atSky(ro, rd); col = stSat(col, uStSat); if (uStBands > 0.5) { vec3 c2 = col / (1.0 + col); c2 = stPoster(c2, uStBands + 6.0); col = c2 / max(1.0 - c2, 1e-3); } gl_FragColor = vec4(col, 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
         }` });
@@ -480,10 +486,10 @@ export class Planet {
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(ico.verts, 3)); geo.setAttribute('aDepth', new THREE.BufferAttribute(depth, 1)); geo.setIndex(new THREE.BufferAttribute(ico.faces, 1));
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), R + 2);
     const wm = new THREE.ShaderMaterial({
-      uniforms: Object.assign({ uTime: this.uniforms.uTime, uSun: this.uniforms.uSun, uColor: { value: new THREE.Color(...b.seaColor) }, uDeep: { value: new THREE.Color(...b.deepColor) }, uSky: { value: new THREE.Color(...b.atmo) }, uLava: { value: b.lava ? 1 : 0 }, tWN: { value: waterNormalTexture() } }, atmoUniformsOf(this.uniforms)),
+      uniforms: Object.assign({ uTime: this.uniforms.uTime, uSun: this.uniforms.uSun, uColor: { value: new THREE.Color(...b.seaColor) }, uDeep: { value: new THREE.Color(...b.deepColor) }, uSky: { value: new THREE.Color(...b.atmo) }, uLava: { value: b.lava ? 1 : 0 }, tWN: { value: waterNormalTexture() } }, atmoUniformsOf(this.uniforms), STYLE_U),
       transparent: !b.lava, depthWrite: true,
       vertexShader: 'attribute float aDepth; varying vec3 vN; varying vec3 vW; varying vec3 vL; varying float vD; void main(){ vN = normalize(mat3(modelMatrix)*normal); vec4 w = modelMatrix*vec4(position,1.0); vW = w.xyz; vL = position; vD = aDepth; gl_Position = projectionMatrix*viewMatrix*w; }',
-      fragmentShader: ATMO_GLSL + `uniform vec3 uColor, uDeep, uSky, uSun; uniform float uTime, uLava; uniform sampler2D tWN; varying vec3 vN; varying vec3 vW; varying vec3 vL; varying float vD;
+      fragmentShader: ATMO_GLSL + STYLE_GLSL + `uniform vec3 uColor, uDeep, uSky, uSun; uniform float uTime, uLava; uniform sampler2D tWN; varying vec3 vN; varying vec3 vW; varying vec3 vL; varying float vD;
         vec3 wnSample(vec3 p, vec3 n, vec3 w) { vec3 sx = texture2D(tWN, p.zy).xyz * 2.0 - 1.0; vec3 sy = texture2D(tWN, p.xz).xyz * 2.0 - 1.0; vec3 sz = texture2D(tWN, p.xy).xyz * 2.0 - 1.0; sx = vec3(sx.xy + n.zy, abs(sx.z) * n.x); sy = vec3(sy.xy + n.xz, abs(sy.z) * n.y); sz = vec3(sz.xy + n.xy, abs(sz.z) * n.z); return normalize(sx.zyx * w.x + sy.xzy * w.y + sz.xyz * w.z); }
         float hash(vec3 p){ return fract(sin(dot(p, vec3(12.9898,78.233,37.719)))*43758.5453); }
         float noise(vec3 p){ vec3 i=floor(p); vec3 f=fract(p); f=f*f*(3.-2.*f);
@@ -519,6 +525,7 @@ export class Planet {
             float alpha = mix(0.55, 0.96, smoothstep(0.0, 4.0, depth)) + foam * 0.4; alpha = mix(alpha, 1.0, fres);
             gl_FragColor = vec4(col, clamp(alpha, 0.0, 1.0));
           }
+          gl_FragColor.rgb = stSat(gl_FragColor.rgb, uStSat); if (uStBands > 0.5) { vec3 c2 = gl_FragColor.rgb / (1.0 + gl_FragColor.rgb); c2 = stPoster(c2, uStBands + 2.0); gl_FragColor.rgb = c2 / max(1.0 - c2, 1e-3); }
           { vec3 atT, atS; atAerial(cameraPosition, vW, atT, atS); gl_FragColor.rgb = gl_FragColor.rgb * atT + atS; }
           #include <tonemapping_fragment>
           #include <colorspace_fragment>

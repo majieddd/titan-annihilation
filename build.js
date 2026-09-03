@@ -3,7 +3,7 @@
 // External imports (three.js CDN) are hoisted to the top of the script.
 const fs = require('fs');
 const path = require('path');
-const ORDER = ['util', 'textures', 'assets', 'foliage', 'planet', 'system', 'defs', 'models', 'effects', 'audio', 'sim', 'ai', 'camera', 'ui', 'main'];
+const ORDER = ['util', 'textures', 'assets', 'style', 'foliage', 'planet', 'system', 'defs', 'models', 'effects', 'audio', 'sim', 'ai', 'camera', 'ui', 'main'];
 const imports = new Set();
 let body = '';
 for (const name of ORDER) {

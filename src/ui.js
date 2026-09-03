@@ -37,7 +37,8 @@ export class UI {
       }
     });
     window.addEventListener('keydown', (e) => {
-      if (e.target && e.target.tagName === 'INPUT') return;
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
+      if (e.key === '[' || e.key === ']') { this.app.cycleStyle(e.key === ']' ? 1 : -1); e.preventDefault(); return; }
       if (e.key === 'Shift') this.shiftDown = true;
       if (this.app.state !== 'playing') return;
       const k = keyCode(e);
@@ -69,16 +70,23 @@ export class UI {
     $('btnRandom').addEventListener('click', () => { $('optSeed').value = Math.random().toString(36).slice(2, 8); this.readSettings(); this.app.regenPlanet(); });
     $('optSeed').addEventListener('change', () => { this.readSettings(); this.app.regenPlanet(); });
     $('launch').addEventListener('click', () => { this.readSettings(); this.app.startGame(); });
+    $('optStyle').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { $('optStyle').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b)); this.app.setStyle(b.dataset.v); }));
+    $('styleSel').addEventListener('change', (e) => { this.app.setStyle(e.target.value); e.target.blur(); });
   }
   readSettings() {
     const s = this.app.settings;
-    s.difficulty = $('optDiff').querySelector('.active').dataset.v; s.biome = $('optBiome').querySelector('.active').dataset.v; s.quality = $('optQuality').querySelector('.active').dataset.v; s.planets = parseInt($('optPlanets').querySelector('.active').dataset.v, 10); s.seed = $('optSeed').value || 'titan';
+    s.difficulty = $('optDiff').querySelector('.active').dataset.v; s.biome = $('optBiome').querySelector('.active').dataset.v; s.quality = $('optQuality').querySelector('.active').dataset.v; s.planets = parseInt($('optPlanets').querySelector('.active').dataset.v, 10); s.seed = $('optSeed').value || 'titan'; const sb = $('optStyle').querySelector('.active'); if (sb) s.style = sb.dataset.v;
     try { localStorage.setItem('ta_settings', JSON.stringify(s)); } catch (e) { }
   }
   applySettings() {
     const s = this.app.settings;
     for (const [id, v] of [['optDiff', s.difficulty], ['optBiome', s.biome], ['optQuality', s.quality], ['optPlanets', String(s.planets)]]) $(id).querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.v === v));
-    $('optSeed').value = s.seed;
+    $('optSeed').value = s.seed; this.syncStyle();
+  }
+  syncStyle() {
+    const id = this.app.style ? this.app.style.id : this.app.settings.style;
+    $('optStyle').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.v === id)); const sel = $('styleSel'); if (sel.value !== id) sel.value = id;
+    const st = this.app.style; if (st) $('styleHint').textContent = st.hint;
   }
   // ---------- selection ----------
   ownSel() { return this.sel.filter((u) => !u.dead && u.team === 0); }

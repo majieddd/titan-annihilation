@@ -4,6 +4,16 @@ Standalone builds of each version live in `versions/` (double-click to play; nee
 The published artifact keeps its own version picker as well (labels match the entries below).
 The in-game menu shows the version number under the title.
 
+## v3.2.0 — 2026-09-02 — Art style lab: six switchable looks
+- New style system: a style is a data bundle (material uniforms, lighting, atmosphere multipliers, post-processing chain) applied on top of the same world, so switching is instant — from the menu (Style row) or in game with the STYLE dropdown in the top bar and the `[` / `]` keys. The choice is saved with the other settings.
+- **Polished Realism** — the v3.1 photographic baseline with a cohesive film grade (cool shadows / warm highlights, subtle grain).
+- **Cel Shaded** — three-band toon light with cool flat shadows, softened painterly textures (mip-biased sampling), posterised sky, and a depth+normal ink outline pass.
+- **Spider-Verse** — two-tone light, per-faction print treatments (the player's units get Ben-Day halftone dots, the enemy's get crosshatching and a desaturated ink palette), CMYK halftone pass, misregistered colour fringing, line boil, paper grain, magenta fill light.
+- **Comic 3D** (Borderlands-like) — heavy ink outlines, crosshatched shadows on every surface, hand-painted texture softness, high-contrast Cineon grade with grunge.
+- **Beyond All Reason** — crisp hard-lit PBR: stronger sun, low ambient, strong metallic specular, saturated team colours, almost no atmospheric haze, sharpened image.
+- **Diorama** (original) — a war table of painted miniatures: matte clay surfaces with rim light, warm studio key plus cool fill light, tilt-shift focus band, no haze, saturated toy palette.
+- Under the hood: every lit material now carries style hooks (albedo posterise/saturation, normal-map strength, texture mip bias, toon banding, shadow/lit tints, hatching, halftone, fresnel ink, clay rim), the composer gained an edge pass fed by the scene depth texture, a halftone pass, a parametric grade and a tilt-shift blur; the sun, hemisphere, environment and a new fill light are driven per style; tone mapping and exposure switch per style.
+
 ## v3.1.0 — 2026-09-02 — Unit fidelity pass, volumetric-look clouds, water-crossing fix
 - Units and structures: baked ambient occlusion between parts (contact shadows under overhangs, around wheels, hatches and greebles) computed from sphere proxies at model build time (~0.2 s for all 41 models), applied to indirect light with specular occlusion and a lighter direct-light term.
 - Edge wear: bevels and rims expose bare metal (brighter, more metallic, smoother) modulated by the plate texture, so paint reads as worn at the corners like real vehicles.

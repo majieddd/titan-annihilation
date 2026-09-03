@@ -94,6 +94,8 @@ button.primary:hover{background:linear-gradient(180deg,#2a9ae0,#1462a0)}
 .seg{display:flex;gap:2px}
 .seg button{padding:5px 12px;font-size:13px}
 .seg button.active{background:rgba(57,193,255,.28);border-color:var(--acc);color:#fff}
+#styleHint{font-size:12px;color:var(--dim);margin:-6px 0 12px 120px;min-height:16px}
+#styleSel{margin-left:auto;background:rgba(10,20,30,.85);color:#cfe6ff;border:1px solid rgba(120,180,220,.4);padding:4px 8px;font:inherit;font-size:12px;letter-spacing:.08em;text-transform:uppercase;border-radius:3px}
 input[type=text]{font-family:inherit;background:rgba(0,0,0,.5);border:1px solid var(--line);color:var(--txt);padding:5px 8px;font-size:14px;width:120px}
 #launch{margin-top:22px}
 #help{margin-top:26px;font-size:12px;color:var(--dim);line-height:1.6;letter-spacing:.04em}
@@ -125,6 +127,7 @@ input[type=text]{font-family:inherit;background:rgba(0,0,0,.5);border:1px solid 
     <div id="clock">0:00</div>
     <div id="unitCount"></div>
     <div id="fps"></div>
+    <select id="styleSel" title="Art style: [ and ] cycle"><option value="realism">Polished Realism</option><option value="cel">Cel Shaded</option><option value="spiderverse">Spider-Verse</option><option value="comic">Comic 3D</option><option value="bar">Beyond All Reason</option><option value="diorama">Diorama</option></select>
   </div>
   <div id="planetbar"></div>
   <div id="modeTag"></div>
@@ -148,8 +151,10 @@ input[type=text]{font-family:inherit;background:rgba(0,0,0,.5);border:1px solid 
     <div class="opt"><label>Seed</label><input type="text" id="optSeed" value=""><button id="btnRandom">Randomize</button></div>
     <div class="opt"><label>Planets</label><div class="seg" id="optPlanets"><button data-v="2">2</button><button data-v="3" class="active">3</button><button data-v="4">4</button></div></div>
     <div class="opt"><label>Quality</label><div class="seg" id="optQuality"><button data-v="medium">Medium</button><button data-v="high" class="active">High</button><button data-v="ultra">Ultra</button></div></div>
+    <div class="opt"><label>Style</label><div class="seg" id="optStyle"><button data-v="realism" class="active">Realism</button><button data-v="cel">Cel</button><button data-v="spiderverse">Spider-Verse</button><button data-v="comic">Comic</button><button data-v="bar">BAR</button><button data-v="diorama">Diorama</button></div></div>
+    <div id="styleHint"></div>
     <button class="primary" id="launch">LAUNCH</button>
-    <div id="help"><b>WASD / drag</b> orbit &nbsp; <b>Wheel</b> zoom (zoom out for the system view) &nbsp; <b>V</b> system view &nbsp; <b>Q/E</b> rotate<br><b>Left click / drag</b> select &nbsp; <b>Right click</b> move / attack (any planet) &nbsp; <b>A</b> attack-move &nbsp; <b>S</b> stop &nbsp; <b>N</b> nuke<br><b>Shift</b> queue / multi-place &nbsp; <b>Ctrl+1-9</b> groups &nbsp; <b>H</b> commander &nbsp; <b>Tab</b> idle fabber &nbsp; <b>P</b> pause<br>Orbital launchers build orbital fabbers that fly between planets. Link two teleporters to march ground armies across the system. Nukes hit any planet; anti-nukes stop them.</div>
+    <div id="help"><b>WASD / drag</b> orbit &nbsp; <b>Wheel</b> zoom (zoom out for the system view) &nbsp; <b>V</b> system view &nbsp; <b>Q/E</b> rotate &nbsp; <b>[ ]</b> art style<br><b>Left click / drag</b> select &nbsp; <b>Right click</b> move / attack (any planet) &nbsp; <b>A</b> attack-move &nbsp; <b>S</b> stop &nbsp; <b>N</b> nuke<br><b>Shift</b> queue / multi-place &nbsp; <b>Ctrl+1-9</b> groups &nbsp; <b>H</b> commander &nbsp; <b>Tab</b> idle fabber &nbsp; <b>P</b> pause<br>Orbital launchers build orbital fabbers that fly between planets. Link two teleporters to march ground armies across the system. Nukes hit any planet; anti-nukes stop them.</div>
   </div>
 </div>
 <div id="loading"><div class="spinner"></div><div id="loadingText">FORGING SYSTEM</div></div>

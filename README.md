@@ -8,6 +8,10 @@ A browser real-time strategy game in the spirit of *Planetary Annihilation: TITA
 
 Every release is kept as a standalone file in [`versions/`](versions/) so builds can be compared over time. See [VERSIONS.md](VERSIONS.md) for the changelog. The menu shows the version number under the title.
 
+## Art styles
+
+Six switchable looks share the same world (see `src/style.js`): Polished Realism, Cel Shaded, Spider-Verse, Comic 3D, Beyond All Reason and Diorama. Pick one on the menu's Style row, or switch in game with the STYLE dropdown in the top bar or the `[` / `]` keys. A style is a data bundle of material uniforms, lighting, atmosphere multipliers and post-processing settings, so switching is instant.
+
 ## Controls
 
 - WASD / drag: orbit the planet. Wheel: zoom (keep zooming out for the system view). V: system view. Q/E: rotate.

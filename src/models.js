@@ -100,10 +100,11 @@ export function makeUnitMaterial(atmoU) {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.55 });
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.tPanel = { value: panel.map }; shader.uniforms.tPanelN = { value: panel.normal };
+    shader.fragmentShader = '#define ST_HAS_TEAM\n' + shader.fragmentShader;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
-        attribute float aTeam; attribute float aGlow; attribute float aHeight; attribute vec3 aTeamColor; attribute vec2 aInst; attribute float aAO; attribute float aEdge;
-        varying float vTeam; varying float vGlow; varying float vHeight; varying vec3 vTeamColor; varying vec2 vInst; varying vec3 vObj; varying vec3 vObjN; varying vec3 vR0; varying vec3 vR1; varying vec3 vR2; varying float vAO; varying float vEdge;`)
+        attribute float aTeam; attribute float aGlow; attribute float aHeight; attribute vec3 aTeamColor; attribute vec3 aInst; attribute float aAO; attribute float aEdge;
+        varying float vTeam; varying float vGlow; varying float vHeight; varying vec3 vTeamColor; varying vec3 vInst; varying vec3 vObj; varying vec3 vObjN; varying vec3 vR0; varying vec3 vR1; varying vec3 vR2; varying float vAO; varying float vEdge;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         vTeam = aTeam; vGlow = aGlow; vHeight = aHeight; vTeamColor = aTeamColor; vInst = aInst; vObj = position; vObjN = normal; vAO = aAO; vEdge = aEdge;
         #ifdef USE_INSTANCING
@@ -114,14 +115,14 @@ export function makeUnitMaterial(atmoU) {
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform sampler2D tPanel; uniform sampler2D tPanelN;
-        varying float vTeam; varying float vGlow; varying float vHeight; varying vec3 vTeamColor; varying vec2 vInst; varying vec3 vObj; varying vec3 vObjN; varying vec3 vR0; varying vec3 vR1; varying vec3 vR2; varying float vAO; varying float vEdge;`)
+        varying float vTeam; varying float vGlow; varying float vHeight; varying vec3 vTeamColor; varying vec3 vInst; varying vec3 vObj; varying vec3 vObjN; varying vec3 vR0; varying vec3 vR1; varying vec3 vR2; varying float vAO; varying float vEdge;`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         if (vInst.x < 1.0 && vHeight > vInst.x) discard;
         vec3 an = abs(normalize(vObjN)); vec3 pw = an * an * an * an; pw /= (pw.x + pw.y + pw.z);
         vec3 pp = vObj * 0.5;
-        vec3 pnc = texture2D(tPanel, pp.zy).rgb * pw.x + texture2D(tPanel, pp.xz).rgb * pw.y + texture2D(tPanel, pp.xy).rgb * pw.z; float pnl = dot(pnc, vec3(0.333));
-        float prg = (texture2D(tPanelN, pp.zy).a * pw.x + texture2D(tPanelN, pp.xz).a * pw.y + texture2D(tPanelN, pp.xy).a * pw.z - 0.3) / 0.7;
-        float pnh = (texture2D(tPanel, pp.zy).a * pw.x + texture2D(tPanel, pp.xz).a * pw.y + texture2D(tPanel, pp.xy).a * pw.z - 0.3) / 0.7;
+        vec3 pnc = texture2D(tPanel, pp.zy, uStLod).rgb * pw.x + texture2D(tPanel, pp.xz, uStLod).rgb * pw.y + texture2D(tPanel, pp.xy, uStLod).rgb * pw.z; float pnl = dot(pnc, vec3(0.333));
+        float prg = (texture2D(tPanelN, pp.zy, uStLod).a * pw.x + texture2D(tPanelN, pp.xz, uStLod).a * pw.y + texture2D(tPanelN, pp.xy, uStLod).a * pw.z - 0.3) / 0.7;
+        float pnh = (texture2D(tPanel, pp.zy, uStLod).a * pw.x + texture2D(tPanel, pp.xz, uStLod).a * pw.y + texture2D(tPanel, pp.xy, uStLod).a * pw.z - 0.3) / 0.7;
         diffuseColor.rgb = mix(diffuseColor.rgb, vTeamColor * 0.9, vTeam);
         diffuseColor.rgb *= (0.62 + 0.75 * pnl) * (0.8 + 0.2 * pnh);
         float wear = vEdge * smoothstep(0.3, 0.75, pnl * 0.8 + vEdge * 0.5);
@@ -140,7 +141,7 @@ export function makeUnitMaterial(atmoU) {
         #endif`)
       .replace('#include <normal_fragment_maps>', `
         vec3 uon = normalize(vObjN);
-        vec3 ux = texture2D(tPanelN, pp.zy).xyz * 2.0 - 1.0; vec3 uy = texture2D(tPanelN, pp.xz).xyz * 2.0 - 1.0; vec3 uz = texture2D(tPanelN, pp.xy).xyz * 2.0 - 1.0;
+        vec3 ux = texture2D(tPanelN, pp.zy, uStLod).xyz * 2.0 - 1.0; vec3 uy = texture2D(tPanelN, pp.xz, uStLod).xyz * 2.0 - 1.0; vec3 uz = texture2D(tPanelN, pp.xy, uStLod).xyz * 2.0 - 1.0;
         ux = vec3(ux.xy + uon.zy, abs(ux.z) * uon.x); uy = vec3(uy.xy + uon.xz, abs(uy.z) * uon.y); uz = vec3(uz.xy + uon.xy, abs(uz.z) * uon.z);
         vec3 unb = normalize(mix(uon, normalize(ux.zyx * pw.x + uy.xzy * pw.y + uz.xyz * pw.z), 0.55));
         mat3 urot = mat3(normalize(vR0), normalize(vR1), normalize(vR2));
@@ -157,7 +158,7 @@ export function makeUnitMaterial(atmoU) {
 function makeInstanced(geo, cap, material) {
   const g = geo.clone();
   g.setAttribute('aTeamColor', new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3));
-  g.setAttribute('aInst', new THREE.InstancedBufferAttribute(new Float32Array(cap * 2), 2));
+  g.setAttribute('aInst', new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3));
   const mesh = new THREE.InstancedMesh(g, material, cap);
   mesh.count = 0; mesh.frustumCulled = false; mesh.castShadow = true; mesh.receiveShadow = true; mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   return mesh;
@@ -175,10 +176,10 @@ export class UnitRenderer {
   }
   setVisible(v) { for (const id in this.types) { const t = this.types[id]; t.body.visible = v; if (t.turret) t.turret.visible = v; } }
   begin() { for (const id in this.types) this.types[id].n = 0; }
-  add(defId, matrix, teamColor, progress, flash, turretMatrix) {
+  add(defId, matrix, teamColor, progress, flash, turretMatrix, team = 0) {
     const t = this.types[defId]; if (!t || t.n >= t.cap) return; const i = t.n++;
-    t.body.setMatrixAt(i, matrix); t.bTeam.setXYZ(i, teamColor[0], teamColor[1], teamColor[2]); t.bInst.setXY(i, progress, flash);
-    if (t.turret) { t.turret.setMatrixAt(i, turretMatrix || matrix); t.tTeam.setXYZ(i, teamColor[0], teamColor[1], teamColor[2]); t.tInst.setXY(i, progress, flash); }
+    t.body.setMatrixAt(i, matrix); t.bTeam.setXYZ(i, teamColor[0], teamColor[1], teamColor[2]); t.bInst.setXYZ(i, progress, flash, team);
+    if (t.turret) { t.turret.setMatrixAt(i, turretMatrix || matrix); t.tTeam.setXYZ(i, teamColor[0], teamColor[1], teamColor[2]); t.tInst.setXYZ(i, progress, flash, team); }
   }
   end() {
     for (const id in this.types) {

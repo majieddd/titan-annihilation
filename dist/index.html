@@ -90,6 +90,8 @@ button.primary:hover{background:linear-gradient(180deg,#2a9ae0,#1462a0)}
 .seg{display:flex;gap:2px}
 .seg button{padding:5px 12px;font-size:13px}
 .seg button.active{background:rgba(57,193,255,.28);border-color:var(--acc);color:#fff}
+#styleHint{font-size:12px;color:var(--dim);margin:-6px 0 12px 120px;min-height:16px}
+#styleSel{margin-left:auto;background:rgba(10,20,30,.85);color:#cfe6ff;border:1px solid rgba(120,180,220,.4);padding:4px 8px;font:inherit;font-size:12px;letter-spacing:.08em;text-transform:uppercase;border-radius:3px}
 input[type=text]{font-family:inherit;background:rgba(0,0,0,.5);border:1px solid var(--line);color:var(--txt);padding:5px 8px;font-size:14px;width:120px}
 #launch{margin-top:22px}
 #help{margin-top:26px;font-size:12px;color:var(--dim);line-height:1.6;letter-spacing:.04em}
@@ -120,6 +122,7 @@ input[type=text]{font-family:inherit;background:rgba(0,0,0,.5);border:1px solid 
     <div id="clock">0:00</div>
     <div id="unitCount"></div>
     <div id="fps"></div>
+    <select id="styleSel" title="Art style: [ and ] cycle"><option value="realism">Polished Realism</option><option value="cel">Cel Shaded</option><option value="spiderverse">Spider-Verse</option><option value="comic">Comic 3D</option><option value="bar">Beyond All Reason</option><option value="diorama">Diorama</option></select>
   </div>
   <div id="planetbar"></div>
   <div id="modeTag"></div>
@@ -143,8 +146,10 @@ input[type=text]{font-family:inherit;background:rgba(0,0,0,.5);border:1px solid 
     <div class="opt"><label>Seed</label><input type="text" id="optSeed" value=""><button id="btnRandom">Randomize</button></div>
     <div class="opt"><label>Planets</label><div class="seg" id="optPlanets"><button data-v="2">2</button><button data-v="3" class="active">3</button><button data-v="4">4</button></div></div>
     <div class="opt"><label>Quality</label><div class="seg" id="optQuality"><button data-v="medium">Medium</button><button data-v="high" class="active">High</button><button data-v="ultra">Ultra</button></div></div>
+    <div class="opt"><label>Style</label><div class="seg" id="optStyle"><button data-v="realism" class="active">Realism</button><button data-v="cel">Cel</button><button data-v="spiderverse">Spider-Verse</button><button data-v="comic">Comic</button><button data-v="bar">BAR</button><button data-v="diorama">Diorama</button></div></div>
+    <div id="styleHint"></div>
     <button class="primary" id="launch">LAUNCH</button>
-    <div id="help"><b>WASD / drag</b> orbit &nbsp; <b>Wheel</b> zoom (zoom out for the system view) &nbsp; <b>V</b> system view &nbsp; <b>Q/E</b> rotate<br><b>Left click / drag</b> select &nbsp; <b>Right click</b> move / attack (any planet) &nbsp; <b>A</b> attack-move &nbsp; <b>S</b> stop &nbsp; <b>N</b> nuke<br><b>Shift</b> queue / multi-place &nbsp; <b>Ctrl+1-9</b> groups &nbsp; <b>H</b> commander &nbsp; <b>Tab</b> idle fabber &nbsp; <b>P</b> pause<br>Orbital launchers build orbital fabbers that fly between planets. Link two teleporters to march ground armies across the system. Nukes hit any planet; anti-nukes stop them.</div>
+    <div id="help"><b>WASD / drag</b> orbit &nbsp; <b>Wheel</b> zoom (zoom out for the system view) &nbsp; <b>V</b> system view &nbsp; <b>Q/E</b> rotate &nbsp; <b>[ ]</b> art style<br><b>Left click / drag</b> select &nbsp; <b>Right click</b> move / attack (any planet) &nbsp; <b>A</b> attack-move &nbsp; <b>S</b> stop &nbsp; <b>N</b> nuke<br><b>Shift</b> queue / multi-place &nbsp; <b>Ctrl+1-9</b> groups &nbsp; <b>H</b> commander &nbsp; <b>Tab</b> idle fabber &nbsp; <b>P</b> pause<br>Orbital launchers build orbital fabbers that fly between planets. Link two teleporters to march ground armies across the system. Nukes hit any planet; anti-nukes stop them.</div>
   </div>
 </div>
 <div id="loading"><div class="spinner"></div><div id="loadingText">FORGING SYSTEM</div></div>
@@ -366,7 +371,7 @@ function makePeriodicWorley(seed) {
     out.f1 = Math.sqrt(f1); out.f2 = Math.sqrt(f2); out.id = id; return out;
   };
 }
-const VERSION = '3.1.0';
+const VERSION = '3.2.0';
 function cubicBezier(p0, p1, p2, p3, t, out) {
   const mt = 1 - t; const a = mt * mt * mt, b = 3 * mt * mt * t, c = 3 * mt * t * t, d = t * t * t;
   return out.set(p0.x * a + p1.x * b + p2.x * c + p3.x * d, p0.y * a + p1.y * b + p2.y * c + p3.y * d, p0.z * a + p1.z * b + p2.z * c + p3.z * d);
@@ -703,6 +708,153 @@ function pack(col, nrm, rgh, ao, hgt, emi) {
 return { TEX_KINDS, getTextureSet, hasRealTexture, realTextureCount, loadRealTextures };
 })();
 
+// ===== style.js =====
+const __mod_style = (() => {
+
+
+/**
+ * Art-style lab. A style is a data bundle applied on top of the same world:
+ *  - mat:   uniforms read by every lit material (texture softness, normal strength, toon bands, shadow tint, hatching, ...)
+ *  - light: sun / hemisphere / environment / fill light
+ *  - atmo:  multipliers on the planet atmosphere (aerial haze density, sky brightness)
+ *  - post:  post-processing chain (edge/ink pass, bloom, halftone, colour grade, tilt-shift, tone mapping)
+ * Switching styles only updates uniforms, lights and pass parameters, so it is instant.
+ */
+const STYLE_U = {
+  uStLod: { value: 0 },            // mip bias for surface textures (higher = softer, more painterly)
+  uStNormal: { value: 1 },         // normal-map influence
+  uStPoster: { value: 0 },         // albedo posterisation levels (0 = off)
+  uStSat: { value: 1 },            // albedo saturation
+  uStBands: { value: 0 },          // toon light bands (0 = continuous lighting)
+  uStSoft: { value: 0.06 },        // band edge softness
+  uStKey: { value: 1 },            // direct light normalisation (sun intensity / pi), set by main
+  uStAmbient: { value: 1 },        // indirect scale in toon mode
+  uStSpec: { value: 1 },           // specular scale (continuous) / quantised highlight strength (toon)
+  uStHatch: { value: 0 },          // screen-space hatching in shadow
+  uStHalftone: { value: 0 },       // screen-space dots in shadow
+  uStOutline: { value: 0 },        // fresnel ink on silhouettes (per material)
+  uStClay: { value: 0 },           // matte clay rim light (diorama)
+  uStFaction: { value: 0 },        // per-team treatment (Spider-Verse)
+  uStTime: { value: 0 },
+  uStDebug: { value: 0 },          // 1 = show direct-light term, 2 = show shade, 3 = indirect
+  uStShadowTint: { value: new THREE.Vector3(1, 1, 1) },
+  uStLitTint: { value: new THREE.Vector3(1, 1, 1) },
+};
+
+const STYLE_GLSL = `
+uniform float uStLod, uStNormal, uStPoster, uStSat, uStBands, uStSoft, uStKey, uStAmbient, uStSpec, uStHatch, uStHalftone, uStOutline, uStClay, uStFaction, uStTime, uStDebug; uniform vec3 uStShadowTint, uStLitTint;
+float stLum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+vec3 stPoster(vec3 c, float n) { return n > 0.5 ? floor(c * n + 0.5) / n : c; }
+vec3 stSat(vec3 c, float s) { float l = stLum(c); return max(vec3(0.0), mix(vec3(l), c, s)); }
+float stBand(float x, float bands, float soft) { float b = x * bands; float f = fract(b); float s = smoothstep(0.5 - soft, 0.5 + soft, f); return clamp((floor(b) + s) / bands, 0.0, 1.0); }
+float stHatchPat(vec2 fc, float spacing, float dir) { float a = (fc.x + dir * fc.y) / spacing; return step(0.45, fract(a)); }
+float stDotPat(vec2 fc, float spacing, float amt) { vec2 p = mat2(0.7071, 0.7071, -0.7071, 0.7071) * fc; vec2 g = fract(p / spacing) - 0.5; float d = length(g) * 2.0; return 1.0 - smoothstep(amt - 0.15, amt + 0.15, d); }
+`;
+
+/** inserted before <opaque_fragment> in every lit material: restyles the physically computed lighting */
+const STYLE_LIGHT_GLSL = `
+{
+  vec3 stAlb = max(diffuseColor.rgb, vec3(0.003)); float stAlbL = max(stLum(stAlb), 1e-3);
+  float stDL = clamp(stLum(reflectedLight.directDiffuse) / stAlbL / max(uStKey, 1e-3), 0.0, 1.0);
+  float stIL = stLum(reflectedLight.indirectDiffuse) / stAlbL;
+  vec3 stSpec = reflectedLight.directSpecular + reflectedLight.indirectSpecular;
+  vec3 stDbg0 = outgoingLight; vec3 stDbg1 = vec3(0.0); vec3 stDbg2 = vec3(0.0);
+  float stTeam = -1.0;
+  #ifdef ST_HAS_TEAM
+  stTeam = vInst.z;
+  #endif
+  if (uStBands > 0.5) {
+    // toon: lift low sun angles into the lit band, keep the shadow side a tinted ~45% of the key light
+    float q = stBand(pow(stDL, 0.6), uStBands, uStSoft);
+    vec3 unlit = stAlb * uStShadowTint * uStKey * 0.42 * uStAmbient + stAlb * stIL * 0.35;
+    vec3 lit = stAlb * uStLitTint * uStKey + stAlb * stIL * 0.35;
+    float sq = smoothstep(0.2, 0.3, stLum(stSpec) / max(uStKey, 1e-3)) * 0.5 * uStSpec;
+    outgoingLight = mix(unlit, lit, q) + vec3(sq) + totalEmissiveRadiance;
+  } else {
+    float sh = 1.0 - stDL;
+    outgoingLight = (outgoingLight - totalEmissiveRadiance - stSpec) * mix(vec3(1.0), uStShadowTint, sh) * mix(vec3(1.0), uStLitTint, stDL) + stSpec * uStSpec + totalEmissiveRadiance;
+  }
+  stDbg1 = outgoingLight;
+  float stNV = clamp(dot(normal, geometryViewDir), 0.0, 1.0);
+  if (uStClay > 0.0) { float rim = pow(1.0 - stNV, 3.0); outgoingLight += stAlb * rim * uStClay * 0.7 * (0.35 + 0.65 * stDL); }
+  float stShade = 1.0 - smoothstep(0.15, 0.6, stDL);
+  float stHatchAmt = uStHatch, stDotAmt = uStHalftone;
+  if (uStFaction > 0.5 && stTeam >= 0.0) { if (stTeam < 0.5) { stDotAmt = 0.9; stHatchAmt = 0.0; } else { stHatchAmt = 0.9; stDotAmt = 0.0; outgoingLight = stSat(outgoingLight, 0.5) * vec3(1.0, 0.97, 0.9); } }
+  if (stHatchAmt > 0.0) { float h1 = stHatchPat(gl_FragCoord.xy, 7.0, 1.0); float h2 = stHatchPat(gl_FragCoord.xy, 7.0, -1.0); float lines = clamp((1.0 - h1) + (1.0 - h2) * smoothstep(0.5, 0.9, stShade), 0.0, 1.0); outgoingLight *= 1.0 - stHatchAmt * stShade * lines * 0.32; }
+  if (stDotAmt > 0.0) { float dots = stDotPat(gl_FragCoord.xy, 7.0, stShade * 0.95); outgoingLight *= 1.0 - stDotAmt * dots * 0.5; }
+  stDbg2 = outgoingLight;
+  if (uStOutline > 0.0) { float fr = pow(1.0 - stNV, 4.0); outgoingLight *= 1.0 - uStOutline * smoothstep(0.5, 0.95, fr); }
+  if (uStDebug > 0.5) {
+    if (uStDebug < 1.5) outgoingLight = vec3(stDL); else if (uStDebug < 2.5) outgoingLight = vec3(stShade); else if (uStDebug < 3.5) outgoingLight = vec3(stIL);
+    else if (uStDebug < 4.5) outgoingLight = vec3(stLum(stSpec));
+    else if (uStDebug < 6.5) outgoingLight = stDbg0; else if (uStDebug < 7.5) outgoingLight = stDbg1; else if (uStDebug < 8.5) outgoingLight = stDbg2; else if (uStDebug < 9.5) outgoingLight = vec3(stHatchAmt, stShade, stDotAmt);
+    else { bool bad = any(isnan(outgoingLight)) || any(isinf(outgoingLight)); bool badS = any(isnan(stSpec)) || any(isinf(stSpec)); bool badD = any(isnan(reflectedLight.directDiffuse)) || any(isnan(reflectedLight.indirectDiffuse)); outgoingLight = bad ? (badS ? vec3(1.0, 0.0, 1.0) : (badD ? vec3(1.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0))) : vec3(0.0, 0.5, 0.0); }
+  }
+}
+`;
+
+const V = (r, g, b) => [r, g, b];
+const STYLES = [
+  {
+    id: 'realism', name: 'Polished Realism', hint: 'The photographic baseline: scanned materials, scattering sky, image-based light, gentle film grade.',
+    mat: { lod: 0, normal: 1, poster: 0, sat: 1.02, bands: 0, soft: 0.06, ambient: 1, spec: 1, hatch: 0, halftone: 0, outline: 0, clay: 0, faction: 0, shadowTint: V(0.94, 0.97, 1.05), litTint: V(1.03, 1.0, 0.96) },
+    light: { sun: 3.1, sunColor: 0xfff1dc, hemi: 0.15, env: 1.0, fill: 0.0, fillColor: 0x9fbcff },
+    atmo: { aerial: 1.0, sunI: 1.0 },
+    post: { tone: 'aces', exposure: 1.0, gtao: true, bloom: [0.3, 0.5, 0.92], edge: null, halftone: null, tilt: null,
+      grade: { sat: 1.08, con: 1.06, vig: 0.4, sharp: 0.22, ca: 0.006, grain: 0.03, poster: 0, paper: 0, shadowTint: V(0.95, 0.98, 1.04), highTint: V(1.03, 1.0, 0.96) } },
+  },
+  {
+    id: 'cel', name: 'Cel Shaded', hint: 'Three-band toon light, cool flat shadows, softened painterly textures, clean ink lines.',
+    mat: { lod: 3.5, normal: 0.15, poster: 0, sat: 1.25, bands: 3, soft: 0.04, ambient: 1.2, spec: 0.8, hatch: 0, halftone: 0, outline: 0.3, clay: 0, faction: 0, shadowTint: V(0.6, 0.66, 0.98), litTint: V(1.03, 1.0, 0.95) },
+    light: { sun: 3.0, sunColor: 0xfff6ea, hemi: 0.35, env: 0.45, fill: 0.3, fillColor: 0x8fb8ff },
+    atmo: { aerial: 0.5, sunI: 0.9 },
+    post: { tone: 'neutral', exposure: 1.05, gtao: false, bloom: [0.12, 0.4, 0.95], edge: { thick: 1.6, depthT: 0.05, normalT: 0.35, color: V(0.05, 0.04, 0.09), strength: 0.9, boil: 0 }, halftone: null, tilt: null,
+      grade: { sat: 1.1, con: 1.08, vig: 0.22, sharp: 0, ca: 0, grain: 0, poster: 0, paper: 0, shadowTint: V(1, 1, 1), highTint: V(1, 1, 1) } },
+  },
+  {
+    id: 'spiderverse', name: 'Spider-Verse', hint: 'Printed-comic animation: two-tone light, Ben-Day dots and hatching per faction, misregistered inks, line boil.',
+    mat: { lod: 2.5, normal: 0.3, poster: 0, sat: 1.35, bands: 2, soft: 0.03, ambient: 1.25, spec: 0.6, hatch: 0.3, halftone: 0, outline: 0.3, clay: 0, faction: 1, shadowTint: V(0.55, 0.5, 0.9), litTint: V(1.05, 0.98, 0.92) },
+    light: { sun: 3.2, sunColor: 0xffe9d6, hemi: 0.5, env: 0.5, fill: 0.35, fillColor: 0xff4fd8 },
+    atmo: { aerial: 0.35, sunI: 0.8 },
+    post: { tone: 'neutral', exposure: 1.0, gtao: false, bloom: [0.22, 0.6, 0.85], edge: { thick: 2.0, depthT: 0.045, normalT: 0.32, color: V(0.09, 0.02, 0.13), strength: 1.0, boil: 1 }, halftone: { dots: 0.5, size: 7 }, tilt: null,
+      grade: { sat: 1.15, con: 1.12, vig: 0.3, sharp: 0, ca: 0.03, grain: 0.07, poster: 0, paper: 0.35, shadowTint: V(0.95, 0.9, 1.1), highTint: V(1.05, 1.0, 0.95) } },
+  },
+  {
+    id: 'comic', name: 'Comic 3D', hint: 'Borderlands-style: heavy ink outlines, crosshatched shadows, hand-painted textures, punchy contrast.',
+    mat: { lod: 1.0, normal: 0.8, poster: 0, sat: 1.15, bands: 0, soft: 0.06, ambient: 1, spec: 0.7, hatch: 0.7, halftone: 0, outline: 0.45, clay: 0, faction: 0, shadowTint: V(0.68, 0.7, 0.92), litTint: V(1.04, 1.0, 0.94) },
+    light: { sun: 3.4, sunColor: 0xfff2e0, hemi: 0.5, env: 0.9, fill: 0.2, fillColor: 0xa0c0ff },
+    atmo: { aerial: 0.45, sunI: 0.9 },
+    post: { tone: 'cineon', exposure: 1.05, gtao: true, bloom: [0.18, 0.5, 0.9], edge: { thick: 2.4, depthT: 0.04, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0 }, halftone: null, tilt: null,
+      grade: { sat: 1.05, con: 1.15, vig: 0.45, sharp: 0.35, ca: 0, grain: 0.05, poster: 0, paper: 0.15, shadowTint: V(0.96, 0.96, 1.02), highTint: V(1.02, 1.0, 0.98) } },
+  },
+  {
+    id: 'bar', name: 'Beyond All Reason', hint: 'Crisp sunlit PBR: hard shadows, strong metallic specular, saturated team colours, almost no haze.',
+    mat: { lod: 0, normal: 1.3, poster: 0, sat: 1.1, bands: 0, soft: 0.06, ambient: 1, spec: 1.5, hatch: 0, halftone: 0, outline: 0, clay: 0, faction: 0, shadowTint: V(0.85, 0.9, 1.06), litTint: V(1.02, 1.0, 0.98) },
+    light: { sun: 4.0, sunColor: 0xfff8f0, hemi: 0.12, env: 0.8, fill: 0.0, fillColor: 0xa0c0ff },
+    atmo: { aerial: 0.3, sunI: 0.85 },
+    post: { tone: 'aces', exposure: 1.05, gtao: true, bloom: [0.26, 0.45, 0.9], edge: null, halftone: null, tilt: null,
+      grade: { sat: 1.15, con: 1.12, vig: 0.2, sharp: 0.4, ca: 0, grain: 0.02, poster: 0, paper: 0, shadowTint: V(0.97, 0.98, 1.03), highTint: V(1.02, 1.0, 0.97) } },
+  },
+  {
+    id: 'diorama', name: 'Diorama', hint: 'Original: a war table of painted miniatures — matte clay surfaces, studio key and fill lights, tilt-shift focus, no haze.',
+    mat: { lod: 1.2, normal: 0.6, poster: 0, sat: 1.28, bands: 0, soft: 0.06, ambient: 1, spec: 0.45, hatch: 0, halftone: 0, outline: 0.15, clay: 1, faction: 0, shadowTint: V(0.8, 0.82, 0.96), litTint: V(1.04, 1.0, 0.94) },
+    light: { sun: 3.6, sunColor: 0xffe6c8, hemi: 0.3, env: 0.7, fill: 0.5, fillColor: 0xa8c8ff },
+    atmo: { aerial: 0.15, sunI: 0.7 },
+    post: { tone: 'aces', exposure: 1.08, gtao: true, bloom: [0.16, 0.5, 0.9], edge: null, halftone: null, tilt: { amount: 5, focus: 0.5, width: 0.2 },
+      grade: { sat: 1.15, con: 1.1, vig: 0.5, sharp: 0.15, ca: 0.004, grain: 0.04, poster: 0, paper: 0, shadowTint: V(0.96, 0.97, 1.03), highTint: V(1.04, 1.0, 0.95) } },
+  },
+];
+function styleById(id) { return STYLES.find((s) => s.id === id) || STYLES[0]; }
+function applyStyleUniforms(m) {
+  STYLE_U.uStLod.value = m.lod; STYLE_U.uStNormal.value = m.normal; STYLE_U.uStPoster.value = m.poster; STYLE_U.uStSat.value = m.sat; STYLE_U.uStBands.value = m.bands; STYLE_U.uStSoft.value = m.soft;
+  STYLE_U.uStAmbient.value = m.ambient; STYLE_U.uStSpec.value = m.spec; STYLE_U.uStHatch.value = m.hatch; STYLE_U.uStHalftone.value = m.halftone; STYLE_U.uStOutline.value = m.outline; STYLE_U.uStClay.value = m.clay; STYLE_U.uStFaction.value = m.faction;
+  const norm = (c) => { const l = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]; return [c[0] / l, c[1] / l, c[2] / l]; };
+  STYLE_U.uStShadowTint.value.set(...norm(m.shadowTint)); STYLE_U.uStLitTint.value.set(...norm(m.litTint));
+}
+
+return { STYLE_U, STYLE_GLSL, STYLE_LIGHT_GLSL, STYLES, styleById, applyStyleUniforms };
+})();
+
 // ===== foliage.js =====
 const __mod_foliage = (() => {
 
@@ -776,6 +928,7 @@ const __mod_planet = (() => {
 const { clamp, lerp, smoothstep, mulberry32, Simplex, MinHeap, angleBetween, tangentToward, moveOnSphere, rotateTangent, anyTangent, frameQuat, TAU } = __mod_util;
 const { detailTexture, cloudTexture, cloudNormalTexture, waterNormalTexture, leafClusterTexture, coniferTexture } = __mod_textures;
 const { getTextureSet } = __mod_assets;
+const { STYLE_U, STYLE_GLSL, STYLE_LIGHT_GLSL } = __mod_style;
 const { GrassField } = __mod_foliage;
 
 const BIOMES = {
@@ -929,10 +1082,15 @@ function injectFog(mat, uniforms, key) {
   mat.onBeforeCompile = (shader, renderer) => {
     if (prev) prev(shader, renderer);
     for (const k of AT_KEYS) shader.uniforms[k] = uniforms[k];
+    for (const k in STYLE_U) shader.uniforms[k] = STYLE_U[k];
     shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vAtW;').replace('#include <project_vertex>', '#include <project_vertex>\nvec4 atwp = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\natwp = instanceMatrix * atwp;\n#endif\nvAtW = (modelMatrix * atwp).xyz;');
-    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + ATMO_GLSL + '\nvarying vec3 vAtW;').replace('#include <tonemapping_fragment>', '{ vec3 atT, atS; atAerial(cameraPosition, vAtW, atT, atS); gl_FragColor.rgb = gl_FragColor.rgb * atT + atS; }\n#include <tonemapping_fragment>');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + ATMO_GLSL + '\n' + STYLE_GLSL + '\nvarying vec3 vAtW;')
+      .replace('#include <alphamap_fragment>', 'diffuseColor.rgb = stSat(stPoster(diffuseColor.rgb, uStPoster), uStSat);\n#include <alphamap_fragment>')
+      .replace('#include <emissivemap_fragment>', 'normal = normalize(mix(nonPerturbedNormal, normal, uStNormal));\n#include <emissivemap_fragment>')
+      .replace('#include <opaque_fragment>', STYLE_LIGHT_GLSL + '\n#include <opaque_fragment>')
+      .replace('#include <tonemapping_fragment>', '{ vec3 atT, atS; atAerial(cameraPosition, vAtW, atT, atS); gl_FragColor.rgb = gl_FragColor.rgb * atT + atS; }\n#include <tonemapping_fragment>');
   };
-  mat.customProgramCacheKey = () => key + '_atmo';
+  mat.customProgramCacheKey = () => key + '_atmo_style';
   return mat;
 }
 const BLACK_TEX = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1); BLACK_TEX.needsUpdate = true;
@@ -947,10 +1105,10 @@ function injectStone(mat, tex) {
         uniform sampler2D tS, tSN; varying vec3 vSPos; varying vec3 vSNrm; varying vec3 vR0; varying vec3 vR1; varying vec3 vR2;`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         vec3 sn = normalize(vSNrm); vec3 sw = pow(abs(sn), vec3(6.0)); sw /= (sw.x + sw.y + sw.z); vec3 sp = vSPos * 0.55;
-        vec3 sd = texture2D(tS, sp.zy).rgb * sw.x + texture2D(tS, sp.xz).rgb * sw.y + texture2D(tS, sp.xy).rgb * sw.z;
+        vec3 sd = texture2D(tS, sp.zy, uStLod).rgb * sw.x + texture2D(tS, sp.xz, uStLod).rgb * sw.y + texture2D(tS, sp.xy, uStLod).rgb * sw.z;
         diffuseColor.rgb *= sd * 1.25;`)
       .replace('#include <normal_fragment_maps>', `
-        vec3 sx = texture2D(tSN, sp.zy).xyz * 2.0 - 1.0; vec3 sy = texture2D(tSN, sp.xz).xyz * 2.0 - 1.0; vec3 sz = texture2D(tSN, sp.xy).xyz * 2.0 - 1.0;
+        vec3 sx = texture2D(tSN, sp.zy, uStLod).xyz * 2.0 - 1.0; vec3 sy = texture2D(tSN, sp.xz, uStLod).xyz * 2.0 - 1.0; vec3 sz = texture2D(tSN, sp.xy, uStLod).xyz * 2.0 - 1.0;
         sx = vec3(sx.xy + sn.zy, abs(sx.z) * sn.x); sy = vec3(sy.xy + sn.xz, abs(sy.z) * sn.y); sz = vec3(sz.xy + sn.xy, abs(sz.z) * sn.z);
         vec3 son = normalize(mix(sn, normalize(sx.zyx * sw.x + sy.xzy * sw.y + sz.xyz * sw.z), 0.8));
         mat3 srot = mat3(normalize(vR0), normalize(vR1), normalize(vR2));
@@ -972,10 +1130,10 @@ function makeTerrainMaterial(planet, tA, tB, tC) {
       .replace('#include <common>', `#include <common>
         uniform sampler2D tA, tAN, tB, tBN, tC, tCN, tBE; uniform float uTexScale, uR, uLava, uSea, uHasBE, uAlb;
         varying vec3 vMat; varying vec3 vLPos; varying vec3 vLNrm;
-        vec4 tri(sampler2D t, vec3 p, vec3 w) { return texture2D(t, p.zy) * w.x + texture2D(t, p.xz) * w.y + texture2D(t, p.xy) * w.z; }
-        vec4 triR(sampler2D t, vec3 p, vec3 w) { return texture2D(t, p.yz) * w.x + texture2D(t, p.zx) * w.y + texture2D(t, p.yx) * w.z; }
+        vec4 tri(sampler2D t, vec3 p, vec3 w) { return texture2D(t, p.zy, uStLod) * w.x + texture2D(t, p.xz, uStLod) * w.y + texture2D(t, p.xy, uStLod) * w.z; }
+        vec4 triR(sampler2D t, vec3 p, vec3 w) { return texture2D(t, p.yz, uStLod) * w.x + texture2D(t, p.zx, uStLod) * w.y + texture2D(t, p.yx, uStLod) * w.z; }
         vec4 triN(sampler2D t, vec3 p, vec3 n, vec3 w) {
-          vec4 sx = texture2D(t, p.zy); vec4 sy = texture2D(t, p.xz); vec4 sz = texture2D(t, p.xy);
+          vec4 sx = texture2D(t, p.zy, uStLod); vec4 sy = texture2D(t, p.xz, uStLod); vec4 sz = texture2D(t, p.xy, uStLod);
           float r = (sx.a * w.x + sy.a * w.y + sz.a * w.z - 0.3) / 0.7;
           vec3 tx = sx.xyz * 2.0 - 1.0; vec3 ty = sy.xyz * 2.0 - 1.0; vec3 tz = sz.xyz * 2.0 - 1.0;
           tx = vec3(tx.xy + n.zy, abs(tx.z) * n.x); ty = vec3(ty.xy + n.xz, abs(ty.z) * n.y); tz = vec3(tz.xy + n.xy, abs(tz.z) * n.z);
@@ -1004,7 +1162,7 @@ function makeTerrainMaterial(planet, tA, tB, tC) {
         vec3 wn = normalize(mix(gn, normalize(na.xyz * w.x + nb.xyz * w.y + nc.xyz * w.z), 0.9));
         normal = normalize((viewMatrix * vec4(wn, 0.0)).xyz);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-        if (uLava > 0.5) { vec3 em = uHasBE > 0.5 ? pow(tri(tBE, p1, bw).rgb, vec3(1.6)) * 1.6 : smoothstep(0.16, 0.04, hB) * vec3(1.0, 0.42, 0.08) * 2.4; totalEmissiveRadiance += w.y * em; }`);
+        if (uLava > 0.5) { vec3 em = uHasBE > 0.5 ? pow(tri(tBE, p1, bw).rgb, vec3(1.6)) * 1.6 : (1.0 - smoothstep(0.04, 0.16, hB)) * vec3(1.0, 0.42, 0.08) * 2.4; totalEmissiveRadiance += w.y * em; }`);
   };
   injectSun(mat, U.uSunView, 'terrain_v4'); injectFog(mat, U, 'terrain_v4_sun');
   return mat;
@@ -1232,11 +1390,11 @@ class Planet {
     if (b.sea) this.buildWater();
     // physically based sky: single-scattering shell, additive over space, occluded by terrain
     const U = this.uniforms;
-    const sm = new THREE.ShaderMaterial({ uniforms: atmoUniformsOf(U), side: THREE.BackSide, transparent: true, depthWrite: false, depthTest: true, blending: THREE.AdditiveBlending,
+    const sm = new THREE.ShaderMaterial({ uniforms: Object.assign(atmoUniformsOf(U), STYLE_U), side: THREE.BackSide, transparent: true, depthWrite: false, depthTest: true, blending: THREE.AdditiveBlending,
       vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix*vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix*viewMatrix*w; }',
-      fragmentShader: ATMO_GLSL + `
+      fragmentShader: ATMO_GLSL + STYLE_GLSL + `
         varying vec3 vW;
-        void main(){ vec3 ro = cameraPosition - uAtC; vec3 rd = normalize(vW - cameraPosition); vec3 col = atSky(ro, rd); gl_FragColor = vec4(col, 1.0);
+        void main(){ vec3 ro = cameraPosition - uAtC; vec3 rd = normalize(vW - cameraPosition); vec3 col = atSky(ro, rd); col = stSat(col, uStSat); if (uStBands > 0.5) { vec3 c2 = col / (1.0 + col); c2 = stPoster(c2, uStBands + 6.0); col = c2 / max(1.0 - c2, 1e-3); } gl_FragColor = vec4(col, 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
         }` });
@@ -1253,10 +1411,10 @@ class Planet {
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(ico.verts, 3)); geo.setAttribute('aDepth', new THREE.BufferAttribute(depth, 1)); geo.setIndex(new THREE.BufferAttribute(ico.faces, 1));
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), R + 2);
     const wm = new THREE.ShaderMaterial({
-      uniforms: Object.assign({ uTime: this.uniforms.uTime, uSun: this.uniforms.uSun, uColor: { value: new THREE.Color(...b.seaColor) }, uDeep: { value: new THREE.Color(...b.deepColor) }, uSky: { value: new THREE.Color(...b.atmo) }, uLava: { value: b.lava ? 1 : 0 }, tWN: { value: waterNormalTexture() } }, atmoUniformsOf(this.uniforms)),
+      uniforms: Object.assign({ uTime: this.uniforms.uTime, uSun: this.uniforms.uSun, uColor: { value: new THREE.Color(...b.seaColor) }, uDeep: { value: new THREE.Color(...b.deepColor) }, uSky: { value: new THREE.Color(...b.atmo) }, uLava: { value: b.lava ? 1 : 0 }, tWN: { value: waterNormalTexture() } }, atmoUniformsOf(this.uniforms), STYLE_U),
       transparent: !b.lava, depthWrite: true,
       vertexShader: 'attribute float aDepth; varying vec3 vN; varying vec3 vW; varying vec3 vL; varying float vD; void main(){ vN = normalize(mat3(modelMatrix)*normal); vec4 w = modelMatrix*vec4(position,1.0); vW = w.xyz; vL = position; vD = aDepth; gl_Position = projectionMatrix*viewMatrix*w; }',
-      fragmentShader: ATMO_GLSL + `uniform vec3 uColor, uDeep, uSky, uSun; uniform float uTime, uLava; uniform sampler2D tWN; varying vec3 vN; varying vec3 vW; varying vec3 vL; varying float vD;
+      fragmentShader: ATMO_GLSL + STYLE_GLSL + `uniform vec3 uColor, uDeep, uSky, uSun; uniform float uTime, uLava; uniform sampler2D tWN; varying vec3 vN; varying vec3 vW; varying vec3 vL; varying float vD;
         vec3 wnSample(vec3 p, vec3 n, vec3 w) { vec3 sx = texture2D(tWN, p.zy).xyz * 2.0 - 1.0; vec3 sy = texture2D(tWN, p.xz).xyz * 2.0 - 1.0; vec3 sz = texture2D(tWN, p.xy).xyz * 2.0 - 1.0; sx = vec3(sx.xy + n.zy, abs(sx.z) * n.x); sy = vec3(sy.xy + n.xz, abs(sy.z) * n.y); sz = vec3(sz.xy + n.xy, abs(sz.z) * n.z); return normalize(sx.zyx * w.x + sy.xzy * w.y + sz.xyz * w.z); }
         float hash(vec3 p){ return fract(sin(dot(p, vec3(12.9898,78.233,37.719)))*43758.5453); }
         float noise(vec3 p){ vec3 i=floor(p); vec3 f=fract(p); f=f*f*(3.-2.*f);
@@ -1292,6 +1450,7 @@ class Planet {
             float alpha = mix(0.55, 0.96, smoothstep(0.0, 4.0, depth)) + foam * 0.4; alpha = mix(alpha, 1.0, fres);
             gl_FragColor = vec4(col, clamp(alpha, 0.0, 1.0));
           }
+          gl_FragColor.rgb = stSat(gl_FragColor.rgb, uStSat); if (uStBands > 0.5) { vec3 c2 = gl_FragColor.rgb / (1.0 + gl_FragColor.rgb); c2 = stPoster(c2, uStBands + 2.0); gl_FragColor.rgb = c2 / max(1.0 - c2, 1e-3); }
           { vec3 atT, atS; atAerial(cameraPosition, vW, atT, atS); gl_FragColor.rgb = gl_FragColor.rgb * atT + atS; }
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
@@ -1913,10 +2072,11 @@ function makeUnitMaterial(atmoU) {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.55 });
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.tPanel = { value: panel.map }; shader.uniforms.tPanelN = { value: panel.normal };
+    shader.fragmentShader = '#define ST_HAS_TEAM\n' + shader.fragmentShader;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
-        attribute float aTeam; attribute float aGlow; attribute float aHeight; attribute vec3 aTeamColor; attribute vec2 aInst; attribute float aAO; attribute float aEdge;
-        varying float vTeam; varying float vGlow; varying float vHeight; varying vec3 vTeamColor; varying vec2 vInst; varying vec3 vObj; varying vec3 vObjN; varying vec3 vR0; varying vec3 vR1; varying vec3 vR2; varying float vAO; varying float vEdge;`)
+        attribute float aTeam; attribute float aGlow; attribute float aHeight; attribute vec3 aTeamColor; attribute vec3 aInst; attribute float aAO; attribute float aEdge;
+        varying float vTeam; varying float vGlow; varying float vHeight; varying vec3 vTeamColor; varying vec3 vInst; varying vec3 vObj; varying vec3 vObjN; varying vec3 vR0; varying vec3 vR1; varying vec3 vR2; varying float vAO; varying float vEdge;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         vTeam = aTeam; vGlow = aGlow; vHeight = aHeight; vTeamColor = aTeamColor; vInst = aInst; vObj = position; vObjN = normal; vAO = aAO; vEdge = aEdge;
         #ifdef USE_INSTANCING
@@ -1927,14 +2087,14 @@ function makeUnitMaterial(atmoU) {
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform sampler2D tPanel; uniform sampler2D tPanelN;
-        varying float vTeam; varying float vGlow; varying float vHeight; varying vec3 vTeamColor; varying vec2 vInst; varying vec3 vObj; varying vec3 vObjN; varying vec3 vR0; varying vec3 vR1; varying vec3 vR2; varying float vAO; varying float vEdge;`)
+        varying float vTeam; varying float vGlow; varying float vHeight; varying vec3 vTeamColor; varying vec3 vInst; varying vec3 vObj; varying vec3 vObjN; varying vec3 vR0; varying vec3 vR1; varying vec3 vR2; varying float vAO; varying float vEdge;`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         if (vInst.x < 1.0 && vHeight > vInst.x) discard;
         vec3 an = abs(normalize(vObjN)); vec3 pw = an * an * an * an; pw /= (pw.x + pw.y + pw.z);
         vec3 pp = vObj * 0.5;
-        vec3 pnc = texture2D(tPanel, pp.zy).rgb * pw.x + texture2D(tPanel, pp.xz).rgb * pw.y + texture2D(tPanel, pp.xy).rgb * pw.z; float pnl = dot(pnc, vec3(0.333));
-        float prg = (texture2D(tPanelN, pp.zy).a * pw.x + texture2D(tPanelN, pp.xz).a * pw.y + texture2D(tPanelN, pp.xy).a * pw.z - 0.3) / 0.7;
-        float pnh = (texture2D(tPanel, pp.zy).a * pw.x + texture2D(tPanel, pp.xz).a * pw.y + texture2D(tPanel, pp.xy).a * pw.z - 0.3) / 0.7;
+        vec3 pnc = texture2D(tPanel, pp.zy, uStLod).rgb * pw.x + texture2D(tPanel, pp.xz, uStLod).rgb * pw.y + texture2D(tPanel, pp.xy, uStLod).rgb * pw.z; float pnl = dot(pnc, vec3(0.333));
+        float prg = (texture2D(tPanelN, pp.zy, uStLod).a * pw.x + texture2D(tPanelN, pp.xz, uStLod).a * pw.y + texture2D(tPanelN, pp.xy, uStLod).a * pw.z - 0.3) / 0.7;
+        float pnh = (texture2D(tPanel, pp.zy, uStLod).a * pw.x + texture2D(tPanel, pp.xz, uStLod).a * pw.y + texture2D(tPanel, pp.xy, uStLod).a * pw.z - 0.3) / 0.7;
         diffuseColor.rgb = mix(diffuseColor.rgb, vTeamColor * 0.9, vTeam);
         diffuseColor.rgb *= (0.62 + 0.75 * pnl) * (0.8 + 0.2 * pnh);
         float wear = vEdge * smoothstep(0.3, 0.75, pnl * 0.8 + vEdge * 0.5);
@@ -1953,7 +2113,7 @@ function makeUnitMaterial(atmoU) {
         #endif`)
       .replace('#include <normal_fragment_maps>', `
         vec3 uon = normalize(vObjN);
-        vec3 ux = texture2D(tPanelN, pp.zy).xyz * 2.0 - 1.0; vec3 uy = texture2D(tPanelN, pp.xz).xyz * 2.0 - 1.0; vec3 uz = texture2D(tPanelN, pp.xy).xyz * 2.0 - 1.0;
+        vec3 ux = texture2D(tPanelN, pp.zy, uStLod).xyz * 2.0 - 1.0; vec3 uy = texture2D(tPanelN, pp.xz, uStLod).xyz * 2.0 - 1.0; vec3 uz = texture2D(tPanelN, pp.xy, uStLod).xyz * 2.0 - 1.0;
         ux = vec3(ux.xy + uon.zy, abs(ux.z) * uon.x); uy = vec3(uy.xy + uon.xz, abs(uy.z) * uon.y); uz = vec3(uz.xy + uon.xy, abs(uz.z) * uon.z);
         vec3 unb = normalize(mix(uon, normalize(ux.zyx * pw.x + uy.xzy * pw.y + uz.xyz * pw.z), 0.55));
         mat3 urot = mat3(normalize(vR0), normalize(vR1), normalize(vR2));
@@ -1970,7 +2130,7 @@ function makeUnitMaterial(atmoU) {
 function makeInstanced(geo, cap, material) {
   const g = geo.clone();
   g.setAttribute('aTeamColor', new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3));
-  g.setAttribute('aInst', new THREE.InstancedBufferAttribute(new Float32Array(cap * 2), 2));
+  g.setAttribute('aInst', new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3));
   const mesh = new THREE.InstancedMesh(g, material, cap);
   mesh.count = 0; mesh.frustumCulled = false; mesh.castShadow = true; mesh.receiveShadow = true; mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   return mesh;
@@ -1988,10 +2148,10 @@ class UnitRenderer {
   }
   setVisible(v) { for (const id in this.types) { const t = this.types[id]; t.body.visible = v; if (t.turret) t.turret.visible = v; } }
   begin() { for (const id in this.types) this.types[id].n = 0; }
-  add(defId, matrix, teamColor, progress, flash, turretMatrix) {
+  add(defId, matrix, teamColor, progress, flash, turretMatrix, team = 0) {
     const t = this.types[defId]; if (!t || t.n >= t.cap) return; const i = t.n++;
-    t.body.setMatrixAt(i, matrix); t.bTeam.setXYZ(i, teamColor[0], teamColor[1], teamColor[2]); t.bInst.setXY(i, progress, flash);
-    if (t.turret) { t.turret.setMatrixAt(i, turretMatrix || matrix); t.tTeam.setXYZ(i, teamColor[0], teamColor[1], teamColor[2]); t.tInst.setXY(i, progress, flash); }
+    t.body.setMatrixAt(i, matrix); t.bTeam.setXYZ(i, teamColor[0], teamColor[1], teamColor[2]); t.bInst.setXYZ(i, progress, flash, team);
+    if (t.turret) { t.turret.setMatrixAt(i, turretMatrix || matrix); t.tTeam.setXYZ(i, teamColor[0], teamColor[1], teamColor[2]); t.tInst.setXYZ(i, progress, flash, team); }
   }
   end() {
     for (const id in this.types) {
@@ -3575,7 +3735,8 @@ class UI {
       }
     });
     window.addEventListener('keydown', (e) => {
-      if (e.target && e.target.tagName === 'INPUT') return;
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
+      if (e.key === '[' || e.key === ']') { this.app.cycleStyle(e.key === ']' ? 1 : -1); e.preventDefault(); return; }
       if (e.key === 'Shift') this.shiftDown = true;
       if (this.app.state !== 'playing') return;
       const k = keyCode(e);
@@ -3607,16 +3768,23 @@ class UI {
     $('btnRandom').addEventListener('click', () => { $('optSeed').value = Math.random().toString(36).slice(2, 8); this.readSettings(); this.app.regenPlanet(); });
     $('optSeed').addEventListener('change', () => { this.readSettings(); this.app.regenPlanet(); });
     $('launch').addEventListener('click', () => { this.readSettings(); this.app.startGame(); });
+    $('optStyle').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { $('optStyle').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b)); this.app.setStyle(b.dataset.v); }));
+    $('styleSel').addEventListener('change', (e) => { this.app.setStyle(e.target.value); e.target.blur(); });
   }
   readSettings() {
     const s = this.app.settings;
-    s.difficulty = $('optDiff').querySelector('.active').dataset.v; s.biome = $('optBiome').querySelector('.active').dataset.v; s.quality = $('optQuality').querySelector('.active').dataset.v; s.planets = parseInt($('optPlanets').querySelector('.active').dataset.v, 10); s.seed = $('optSeed').value || 'titan';
+    s.difficulty = $('optDiff').querySelector('.active').dataset.v; s.biome = $('optBiome').querySelector('.active').dataset.v; s.quality = $('optQuality').querySelector('.active').dataset.v; s.planets = parseInt($('optPlanets').querySelector('.active').dataset.v, 10); s.seed = $('optSeed').value || 'titan'; const sb = $('optStyle').querySelector('.active'); if (sb) s.style = sb.dataset.v;
     try { localStorage.setItem('ta_settings', JSON.stringify(s)); } catch (e) { }
   }
   applySettings() {
     const s = this.app.settings;
     for (const [id, v] of [['optDiff', s.difficulty], ['optBiome', s.biome], ['optQuality', s.quality], ['optPlanets', String(s.planets)]]) $(id).querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.v === v));
-    $('optSeed').value = s.seed;
+    $('optSeed').value = s.seed; this.syncStyle();
+  }
+  syncStyle() {
+    const id = this.app.style ? this.app.style.id : this.app.settings.style;
+    $('optStyle').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.v === id)); const sel = $('styleSel'); if (sel.value !== id) sel.value = id;
+    const st = this.app.style; if (st) $('styleHint').textContent = st.hint;
   }
   // ---------- selection ----------
   ownSel() { return this.sel.filter((u) => !u.dead && u.team === 0); }
@@ -3900,6 +4068,7 @@ const __mod_main = (() => {
 
 
 
+const { STYLES, STYLE_U, styleById, applyStyleUniforms } = __mod_style;
 const { StarSystem } = __mod_system;
 const { PlanetCamera } = __mod_camera;
 const { Game } = __mod_sim;
@@ -3915,10 +4084,11 @@ const { mulberry32, hashString, clamp, Simplex, VERSION } = __mod_util;
 
 const STEP = 1 / 60;
 const $ = (id) => document.getElementById(id);
-const app = { state: 'loading', paused: false, settings: { difficulty: 'normal', biome: 'earth', seed: 'titan', quality: 'high', planets: 3 }, game: null, ai: null, system: null, fx: null, fxGroup: null };
+const app = { state: 'loading', paused: false, settings: { difficulty: 'normal', biome: 'earth', seed: 'titan', quality: 'high', planets: 3, style: 'realism' }, game: null, ai: null, system: null, fx: null, fxGroup: null };
 try { const s = JSON.parse(localStorage.getItem('ta_settings') || 'null'); if (s) Object.assign(app.settings, s); } catch (e) { }
 if (!['medium', 'high', 'ultra'].includes(app.settings.quality)) app.settings.quality = 'high';
 if (![2, 3, 4].includes(app.settings.planets)) app.settings.planets = 3;
+if (!STYLES.some((s) => s.id === app.settings.style)) app.settings.style = 'realism';
 window.__app = app;
 
 // ---------- renderer / scene ----------
@@ -3934,6 +4104,7 @@ const sun = new THREE.DirectionalLight(0xfff1dc, 3.1); sun.castShadow = true;
 sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.5; sun.shadow.camera.near = 100; sun.shadow.camera.far = 1300;
 scene.add(sun); scene.add(sun.target);
 const hemi = new THREE.HemisphereLight(0x8fb4ff, 0x3a2a1a, 0.15); scene.add(hemi);
+const fill = new THREE.DirectionalLight(0xa8c8ff, 0); fill.castShadow = false; scene.add(fill); scene.add(fill.target);
 const pmrem = new THREE.PMREMGenerator(renderer); scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.5; pmrem.compileCubemapShader();
 // dynamic image-based lighting: a cube capture of the real sky/terrain around the camera anchor, filtered by PMREM
 const envRT = new THREE.WebGLCubeRenderTarget(128, { type: THREE.HalfFloatType, generateMipmaps: false });
@@ -3945,33 +4116,87 @@ function updateEnvironment(now, force) {
   _envN.copy(cam.anchor).sub(p.center).normalize(); envCam.position.copy(cam.anchor).addScaledVector(_envN, 30);
   const sm = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false; envCam.update(renderer, scene); renderer.shadowMap.autoUpdate = sm;
   for (const o of hid) o.visible = true; if (unitRenderer) unitRenderer.setVisible(true);
-  const old = envTarget; envTarget = pmrem.fromCubemap(envRT.texture); scene.environment = envTarget.texture; scene.environmentIntensity = 1.0; if (old) old.dispose();
+  const old = envTarget; envTarget = pmrem.fromCubemap(envRT.texture); scene.environment = envTarget.texture; scene.environmentIntensity = app.style ? app.style.light.env : 1.0; if (old) old.dispose();
 }
 
-const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType }));
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture(1, 1) }));
 const renderPass = new RenderPass(scene, camera); composer.addPass(renderPass);
 const gtao = new GTAOPass(scene, camera, 1, 1); gtao.enabled = false; gtao.blendIntensity = 0.7; composer.addPass(gtao);
 // layer 1 = alpha-tested / volumetric surfaces (foliage cards, grass, clouds, sky shell): drawn normally but excluded from the AO depth pass
 camera.layers.enable(1); sun.shadow.camera.layers.enable(1);
 { const r = gtao.render.bind(gtao); gtao.render = (...a) => { camera.layers.disable(1); r(...a); camera.layers.enable(1); }; }
-const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.38, 0.5, 0.92); composer.addPass(bloom);
+const QUAD_VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+// ink / outline pass: depth + reconstructed-normal edges from the scene depth texture
+const edgePass = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uNear: { value: 1 }, uFar: { value: 1000 }, uProjInv: { value: new THREE.Matrix4() }, uThick: { value: 1.5 }, uDepthT: { value: 0.05 }, uNormalT: { value: 0.35 }, uStrength: { value: 1 }, uBoil: { value: 0 }, uTime: { value: 0 }, uColor: { value: new THREE.Vector3(0, 0, 0) } },
+  vertexShader: QUAD_VS,
+  fragmentShader: `uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform vec2 uTexel; uniform float uNear, uFar, uThick, uDepthT, uNormalT, uStrength, uBoil, uTime; uniform vec3 uColor; uniform mat4 uProjInv; varying vec2 vUv;
+    float lin(float d) { float z = d * 2.0 - 1.0; return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }
+    vec3 vpos(vec2 uv, float d) { vec4 p = uProjInv * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); return p.xyz / p.w; }
+    void main(){
+      vec2 uv = vUv; vec4 col = texture2D(tDiffuse, vUv);
+      if (uBoil > 0.0) { float t = floor(uTime * 8.0); uv += (vec2(fract(sin(t * 12.99) * 43758.5), fract(sin(t * 78.23) * 43758.5)) - 0.5) * uTexel * 2.0 * uBoil; }
+      vec2 o = uTexel * uThick; float d0 = texture2D(tDepth, uv).r; float z0 = lin(d0);
+      float dL = texture2D(tDepth, uv - vec2(o.x, 0.0)).r, dR = texture2D(tDepth, uv + vec2(o.x, 0.0)).r, dD = texture2D(tDepth, uv - vec2(0.0, o.y)).r, dU = texture2D(tDepth, uv + vec2(0.0, o.y)).r;
+      float zL = lin(dL), zR = lin(dR), zD = lin(dD), zU = lin(dU);
+      float zmin = min(min(zL, zR), min(zD, zU)); float zn = min(z0, zmin);
+      float dz = max(abs(zL + zR - 2.0 * z0), abs(zD + zU - 2.0 * z0)) / zn;
+      float far = max(max(abs(zL - z0), abs(zR - z0)), max(abs(zD - z0), abs(zU - z0))) / zn;
+      float eDepth = smoothstep(uDepthT, uDepthT * 2.5, max(dz, far * 0.35));
+      vec3 P = vpos(uv, d0); vec3 Px = vpos(uv + vec2(o.x, 0.0), dR) - P; vec3 Py = vpos(uv + vec2(0.0, o.y), dU) - P; vec3 n0 = normalize(cross(Px, Py));
+      vec3 PL = vpos(uv - vec2(o.x, 0.0), dL); vec3 PD = vpos(uv - vec2(0.0, o.y), dD); vec3 n1 = normalize(cross(P - PL, Py)); vec3 n2 = normalize(cross(Px, P - PD));
+      float eN = smoothstep(uNormalT, uNormalT + 0.3, max(1.0 - dot(n0, n1), 1.0 - dot(n0, n2))) * (1.0 - step(0.9999, d0));
+      float e = clamp(max(eDepth, eN) * uStrength, 0.0, 1.0);
+      gl_FragColor = vec4(mix(col.rgb, uColor, e), col.a); }` });
+edgePass.enabled = false; composer.insertPass(edgePass, 1);
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.3, 0.5, 0.92); composer.addPass(bloom);
 const grade = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, uAmount: { value: 1 }, uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) } },
-  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float uAmount; uniform vec2 uTexel; varying vec2 vUv;
-    void main(){ vec2 d = vUv - 0.5; float r2 = dot(d, d); float ca = 0.006 * r2;
+  uniforms: { tDiffuse: { value: null }, uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uSat: { value: 1.08 }, uCon: { value: 1.06 }, uVig: { value: 0.4 }, uSharp: { value: 0.22 }, uCA: { value: 0.006 }, uGrain: { value: 0.03 }, uPoster: { value: 0 }, uPaper: { value: 0 }, uDots: { value: 0 }, uDotSize: { value: 6 }, uTime: { value: 0 }, uShadowTint: { value: new THREE.Vector3(1, 1, 1) }, uHighTint: { value: new THREE.Vector3(1, 1, 1) } },
+  vertexShader: QUAD_VS,
+  fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 uTexel; uniform float uSat, uCon, uVig, uSharp, uCA, uGrain, uPoster, uPaper, uDots, uDotSize, uTime; uniform vec3 uShadowTint, uHighTint; varying vec2 vUv;
+    float hash(vec2 p) { p = fract(p * vec2(0.1031, 0.1030)); p += dot(p, p.yx + 33.33); return fract((p.x + p.y) * p.x); }
+    float dotPat(vec2 fc, float ang, float spacing, float size) { mat2 rot = mat2(cos(ang), sin(ang), -sin(ang), cos(ang)); vec2 g = fract(rot * fc / spacing) - 0.5; return smoothstep(size - 0.22, size + 0.22, length(g) * 2.0); }
+    void main(){ vec2 d = vUv - 0.5; float r2 = dot(d, d); float ca = uCA * r2;
       vec3 col; col.r = texture2D(tDiffuse, vUv + d * ca).r; col.g = texture2D(tDiffuse, vUv).g; col.b = texture2D(tDiffuse, vUv - d * ca).b;
-      vec3 nb = texture2D(tDiffuse, vUv + vec2(uTexel.x, 0.0)).rgb + texture2D(tDiffuse, vUv - vec2(uTexel.x, 0.0)).rgb + texture2D(tDiffuse, vUv + vec2(0.0, uTexel.y)).rgb + texture2D(tDiffuse, vUv - vec2(0.0, uTexel.y)).rgb;
-      col = max(col + (col * 4.0 - nb) * 0.22, 0.0);
-      float lum = dot(col, vec3(0.299, 0.587, 0.114)); col = mix(vec3(lum), col, 1.12); col = (col - 0.5) * 1.05 + 0.5;
-      float vig = 1.0 - smoothstep(0.35, 1.25, r2 * 1.7) * 0.42; col *= vig; gl_FragColor = vec4(max(col, 0.0), 1.0); }` });
-composer.addPass(grade); composer.addPass(new OutputPass());
+      if (uSharp > 0.0) { vec3 nb = texture2D(tDiffuse, vUv + vec2(uTexel.x, 0.0)).rgb + texture2D(tDiffuse, vUv - vec2(uTexel.x, 0.0)).rgb + texture2D(tDiffuse, vUv + vec2(0.0, uTexel.y)).rgb + texture2D(tDiffuse, vUv - vec2(0.0, uTexel.y)).rgb; col = max(col + (col * 4.0 - nb) * uSharp, 0.0); }
+      float lum = dot(col, vec3(0.299, 0.587, 0.114)); col = mix(vec3(lum), col, uSat); col = (col - 0.5) * uCon + 0.5;
+      float t = clamp(lum / (1.0 + lum), 0.0, 1.0); col *= mix(uShadowTint, uHighTint, t);
+      if (uPoster > 0.5) { vec3 c2 = col / (1.0 + col); c2 = floor(c2 * uPoster + 0.5) / uPoster; col = c2 / max(1.0 - c2, 1e-3); }
+      if (uDots > 0.0) { float lm = lum / (1.0 + lum); float sz = (1.0 - lm) * 1.1; vec3 pat = vec3(dotPat(gl_FragCoord.xy, 0.26, uDotSize, sz), dotPat(gl_FragCoord.xy, 0.79, uDotSize, sz), dotPat(gl_FragCoord.xy, 1.31, uDotSize, sz)); col *= mix(vec3(1.0), pat, uDots); }
+      if (uPaper > 0.0) { float p = hash(floor(vUv * vec2(900.0, 500.0))); col *= mix(1.0, mix(0.9, 1.1, p), uPaper); col = mix(col, col * vec3(1.03, 0.99, 0.93), uPaper * 0.6); }
+      if (uGrain > 0.0) { float g = hash(vUv * 1000.0 + fract(uTime) * 100.0) - 0.5; col += g * uGrain * (0.3 + lum); }
+      float vig = 1.0 - smoothstep(0.35, 1.25, r2 * 1.7) * uVig; col *= vig; gl_FragColor = vec4(max(col, 0.0), 1.0); }` });
+composer.addPass(grade);
+const TILT_FS = `uniform sampler2D tDiffuse; uniform vec2 uTexel; uniform vec2 uDir; uniform float uAmount, uFocus, uWidth; varying vec2 vUv;
+  void main(){ float f = smoothstep(uWidth, uWidth + 0.35, abs(vUv.y - uFocus)); float r = uAmount * f; vec4 c = vec4(0.0); float ws = 0.0;
+    for (int i = -4; i <= 4; i++) { float w = exp(-float(i * i) / 6.0); c += texture2D(tDiffuse, vUv + uDir * uTexel * r * float(i) / 4.0) * w; ws += w; } gl_FragColor = c / ws; }`;
+const mkTilt = (dx, dy) => new ShaderPass({ uniforms: { tDiffuse: { value: null }, uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uDir: { value: new THREE.Vector2(dx, dy) }, uAmount: { value: 5 }, uFocus: { value: 0.5 }, uWidth: { value: 0.2 } }, vertexShader: QUAD_VS, fragmentShader: TILT_FS });
+const tiltH = mkTilt(1, 0), tiltV = mkTilt(0, 1); tiltH.enabled = tiltV.enabled = false; composer.addPass(tiltH); composer.addPass(tiltV);
+composer.addPass(new OutputPass());
+const TONE = { aces: THREE.ACESFilmicToneMapping, neutral: THREE.NeutralToneMapping, cineon: THREE.CineonToneMapping, reinhard: THREE.ReinhardToneMapping };
+const _fillDir = new THREE.Vector3();
+app.styleU = STYLE_U; app.passes = { edgePass, gtao, bloom, grade, tiltH, tiltV, composer };
+app.setStyle = (id) => {
+  const st = styleById(id); app.style = st; app.settings.style = st.id; try { localStorage.setItem('ta_settings', JSON.stringify(app.settings)); } catch (e) { }
+  applyStyleUniforms(st.mat); STYLE_U.uStKey.value = st.light.sun / Math.PI;
+  sun.intensity = st.light.sun; sun.color.set(st.light.sunColor); hemi.intensity = st.light.hemi; fill.intensity = st.light.fill; fill.color.set(st.light.fillColor); scene.environmentIntensity = st.light.env;
+  const p = st.post; bloom.strength = p.bloom[0]; bloom.radius = p.bloom[1]; bloom.threshold = p.bloom[2];
+  edgePass.enabled = !!p.edge; if (p.edge) { const u = edgePass.uniforms; u.uThick.value = p.edge.thick; u.uDepthT.value = p.edge.depthT; u.uNormalT.value = p.edge.normalT; u.uStrength.value = p.edge.strength; u.uBoil.value = p.edge.boil; u.uColor.value.set(...p.edge.color); }
+  tiltH.enabled = tiltV.enabled = !!p.tilt; if (p.tilt) for (const t of [tiltH, tiltV]) { t.uniforms.uAmount.value = p.tilt.amount; t.uniforms.uFocus.value = p.tilt.focus; t.uniforms.uWidth.value = p.tilt.width; }
+  const g = grade.uniforms, gr = p.grade; g.uSat.value = gr.sat; g.uCon.value = gr.con; g.uVig.value = gr.vig; g.uSharp.value = gr.sharp; g.uCA.value = gr.ca; g.uGrain.value = gr.grain; g.uPoster.value = gr.poster; g.uPaper.value = gr.paper; g.uDots.value = p.halftone ? p.halftone.dots : 0; g.uDotSize.value = p.halftone ? p.halftone.size : 6; g.uShadowTint.value.set(...gr.shadowTint); g.uHighTint.value.set(...gr.highTint);
+  renderer.toneMapping = TONE[p.tone] || THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = p.exposure;
+  gtao.enabled = app.settings.quality !== 'medium' && p.gtao !== false;
+  if (app.system) for (const pl of app.system.planets) { if (!pl.atBase) pl.atBase = { I: pl.uniforms.uAtI.value, K: pl.uniforms.uAtK.value }; pl.uniforms.uAtI.value = pl.atBase.I * st.atmo.sunI; pl.uniforms.uAtK.value = pl.atBase.K * st.atmo.aerial; }
+  envT = -1e9; if (app.ui) app.ui.syncStyle();
+};
+app.cycleStyle = (dir) => { const i = STYLES.findIndex((s) => s.id === (app.style ? app.style.id : app.settings.style)); app.setStyle(STYLES[(i + dir + STYLES.length) % STYLES.length].id); };
+
 
 function applyQuality() {
   const q = app.settings.quality; const dpr = q === 'medium' ? Math.min(devicePixelRatio, 1.25) : (q === 'high' ? Math.min(devicePixelRatio, 2) : devicePixelRatio);
   renderer.setPixelRatio(dpr); const sm = q === 'medium' ? 2048 : 4096; setTextureSize(q === 'medium' ? 512 : (q === 'high' ? 768 : 1024));
   if (sun.shadow.mapSize.x !== sm) { sun.shadow.mapSize.set(sm, sm); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
-  gtao.enabled = q !== 'medium'; resize();
+  gtao.enabled = q !== 'medium' && !(app.style && app.style.post.gtao === false); resize();
 }
 function setupSky() {
   const rng = mulberry32(7); const n = 9000; const p = new Float32Array(n * 3); const c = new Float32Array(n * 3); const s = new Float32Array(n);
@@ -3979,7 +4204,7 @@ function setupSky() {
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('color', new THREE.BufferAttribute(c, 3)); g.setAttribute('aSize', new THREE.BufferAttribute(s, 1));
   const m = new THREE.ShaderMaterial({ vertexColors: true, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending,
     vertexShader: 'attribute float aSize; varying vec3 vC; void main(){ vC = color; vec4 mv = modelViewMatrix*vec4(position,1.0); gl_PointSize = aSize * 1.7; gl_Position = projectionMatrix*mv; }',
-    fragmentShader: 'varying vec3 vC; void main(){ vec2 d = gl_PointCoord-0.5; float a = smoothstep(0.5,0.08,length(d)); gl_FragColor = vec4(vC*a*1.2, a); }' });
+    fragmentShader: 'varying vec3 vC; void main(){ vec2 d = gl_PointCoord-0.5; float a = 1.0 - smoothstep(0.08, 0.5, length(d)); gl_FragColor = vec4(vC*a*1.2, a); }' });
   const stars = new THREE.Points(g, m); stars.frustumCulled = false; scene.add(stars);
   const neb = new THREE.Mesh(new THREE.SphereGeometry(60000, 48, 24), new THREE.MeshBasicMaterial({ map: nebulaTexture(new Simplex(mulberry32(5))), side: THREE.BackSide, depthWrite: false })); neb.renderOrder = -10; neb.frustumCulled = false; scene.add(neb);
 }
@@ -4003,6 +4228,7 @@ async function createWorld() {
   app.fxGroup = new THREE.Group(); scene.add(app.fxGroup);
   app.fx = new Effects(app.fxGroup, system); app.fx.setViewport(innerWidth, innerHeight);
   app.focusPlanet(system.planets[0], null, 780);
+  if (app.style) app.setStyle(app.style.id);
   app.generating = false; $('loading').classList.add('hidden');
 }
 app.focusPlanet = (planet, dir, dist) => { cam.focus(planet, dir, dist); };
@@ -4029,7 +4255,7 @@ function onGameOver(winner) { app.state = 'over'; app.overT = 0; app.winner = wi
 app.toMenu = async () => { if (app.generating) return; app.state = 'menu'; app.game = null; app.ai = null; ui.reset(); $('hud').classList.add('hidden'); $('gameover').classList.add('hidden'); await createWorld(); setupMenuCamera(); $('menu').classList.remove('hidden'); };
 app.togglePause = () => { if (app.state !== 'playing') return; app.paused = !app.paused; $('pauseTag').classList.toggle('hidden', !app.paused); ui.selDirty = true; };
 
-function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer.setSize(w, h); bloom.setSize(w, h); gtao.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); if (app.fx) app.fx.setViewport(w, h); const pr = renderer.getPixelRatio(); grade.uniforms.uTexel.value.set(1 / (w * pr), 1 / (h * pr)); }
+function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer.setSize(w, h); bloom.setSize(w, h); gtao.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); if (app.fx) app.fx.setViewport(w, h); const pr = renderer.getPixelRatio(); grade.uniforms.uTexel.value.set(1 / (w * pr), 1 / (h * pr)); edgePass.uniforms.uTexel.value.set(1 / (w * pr), 1 / (h * pr)); tiltH.uniforms.uTexel.value.set(1 / (w * pr), 1 / (h * pr)); tiltV.uniforms.uTexel.value.set(1 / (w * pr), 1 / (h * pr)); }
 addEventListener('resize', resize);
 document.addEventListener('pointerdown', () => { audio.init(); audio.resume(); }, { capture: true });
 
@@ -4044,7 +4270,7 @@ function renderUnits(time) {
       if (u.def.kind === 'bot' && u.moving) _pos.addScaledVector(u.dir, Math.abs(Math.sin(time * 14 + u.bobPhase)) * 0.12);
       _m.compose(_pos, u.quat, _one); let tm = null;
       if (u.def.hasTurret) { const pv = unitRenderer.models[u.def.id].pivot; _pm.makeTranslation(pv[0], pv[1], pv[2]); _rm.makeRotationY(u.turret); tm = _tm.copy(_m).multiply(_pm).multiply(_rm); }
-      unitRenderer.add(u.def.id, _m, TEAM_COLORS[u.team], prog, u.flash, tm);
+      unitRenderer.add(u.def.id, _m, TEAM_COLORS[u.team], prog, u.flash, tm, u.team);
     }
   }
   unitRenderer.end();
@@ -4074,6 +4300,8 @@ function advance(dt, render = true) {
   sun.position.copy(cam.anchor).addScaledVector(_sunDir, 600); sun.target.position.copy(cam.anchor);
   const s = cam.mode === 'system' ? 700 : clamp(cam.dist * 1.15, 45, 700); const sc = sun.shadow.camera; sc.left = -s; sc.right = s; sc.top = s; sc.bottom = -s; sc.updateProjectionMatrix();
   updateEnvironment(performance.now(), false);
+  { const now = performance.now() / 1000; STYLE_U.uStTime.value = now; grade.uniforms.uTime.value = now; edgePass.uniforms.uTime.value = now; edgePass.uniforms.uNear.value = camera.near; edgePass.uniforms.uFar.value = camera.far; edgePass.uniforms.uProjInv.value.copy(camera.projectionMatrixInverse); edgePass.uniforms.tDepth.value = composer.renderTarget2.depthTexture;
+    _fillDir.copy(_sunDir).multiplyScalar(-1).addScaledVector(cam.mode === 'planet' ? cam.normal : _sunDir, 0.9).normalize(); fill.position.copy(cam.anchor).addScaledVector(_fillDir, 600); fill.target.position.copy(cam.anchor); }
   composer.render();
   if (app.state === 'playing' || app.state === 'over') ui.update(dt);
 }
@@ -4086,7 +4314,7 @@ app.advance = (sec, fdt = 1 / 30) => { for (let t = 0; t < sec; t += fdt) advanc
   try { await loadRealTextures(TEX_KINDS, (kind, n) => { $('loadingText').textContent = 'LOADING MATERIALS ' + n + '/' + TEX_KINDS.length; }); } catch (e) { console.warn('texture preload failed, using procedural materials', e); }
   $('loadingText').textContent = 'BUILDING UNITS'; await new Promise((r) => setTimeout(r, 30));
   { const t0 = performance.now(); unitRenderer = new UnitRenderer(scene, app.atmoU); app.unitRenderer = unitRenderer; app.unitBuildMs = performance.now() - t0; console.info('unit models built in ' + app.unitBuildMs.toFixed(0) + ' ms'); }
-  await createWorld(); setupMenuCamera(); ui.applySettings();
+  await createWorld(); app.setStyle(app.settings.style); setupMenuCamera(); ui.applySettings();
   $('subtitle').textContent = 'v' + VERSION + ' · Command. Expand. Annihilate.'; $('menu').classList.remove('hidden'); app.state = 'menu';
   requestAnimationFrame(frame);
 })();
