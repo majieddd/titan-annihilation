@@ -96,8 +96,10 @@ button.primary:hover{background:linear-gradient(180deg,#2a9ae0,#1462a0)}
 .seg{display:flex;gap:2px}
 .seg button{padding:5px 12px;font-size:13px}
 .seg button.active{background:rgba(57,193,255,.28);border-color:var(--acc);color:#fff}
-#styleHint{font-size:12px;color:var(--dim);margin:-6px 0 12px 120px;min-height:16px}
-#styleSel{margin-left:auto;background:rgba(10,20,30,.85);color:#cfe6ff;border:1px solid rgba(120,180,220,.4);padding:4px 8px;font:inherit;font-size:12px;letter-spacing:.08em;text-transform:uppercase;border-radius:3px}
+#optStyle{flex-wrap:wrap;max-width:520px}
+#styleHint{font-size:12px;color:var(--dim);margin:-6px 0 12px 120px;min-height:16px;max-width:520px}
+#styleWrap{position:absolute;left:16px;top:100px;display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.14em;color:var(--dim);background:rgba(4,10,16,.7);padding:4px 8px;border-radius:4px}
+#styleSel{background:rgba(10,20,30,.85);color:#cfe6ff;border:1px solid rgba(120,180,220,.4);padding:4px 8px;font:inherit;font-size:12px;letter-spacing:.08em;text-transform:uppercase;border-radius:3px}
 input[type=text]{font-family:inherit;background:rgba(0,0,0,.5);border:1px solid var(--line);color:var(--txt);padding:5px 8px;font-size:14px;width:120px}
 #launch{margin-top:22px}
 #help{margin-top:26px;font-size:12px;color:var(--dim);line-height:1.6;letter-spacing:.04em}
@@ -128,9 +130,9 @@ input[type=text]{font-family:inherit;background:rgba(0,0,0,.5);border:1px solid 
     <div id="clock">0:00</div>
     <div id="unitCount"></div>
     <div id="fps"></div>
-    <select id="styleSel" title="Art style: [ and ] cycle"><option value="realism">Polished Realism</option><option value="cel">Cel Shaded</option><option value="spiderverse">Spider-Verse</option><option value="comic">Comic 3D</option><option value="bar">Beyond All Reason</option><option value="inksteel">Ink &amp; Steel</option><option value="diorama">Diorama</option></select>
   </div>
   <div id="planetbar"></div>
+  <div id="styleWrap"><span>STYLE</span><select id="styleSel" title="Art style: [ and ] cycle"><option value="realism">Polished Realism</option><option value="cel">Cel Shaded</option><option value="spiderverse">Spider-Verse</option><option value="comic">Comic 3D</option><option value="bar">Beyond All Reason</option><option value="inksteel">Ink &amp; Steel</option><option value="reliquary">Reliquary</option><option value="coil">The Coil</option><option value="poly">Poly</option><option value="diorama">Diorama</option></select></div>
   <div id="modeTag"></div>
   <div id="alerts"></div>
   <div id="hint"></div>
@@ -152,7 +154,7 @@ input[type=text]{font-family:inherit;background:rgba(0,0,0,.5);border:1px solid 
     <div class="opt"><label>Seed</label><input type="text" id="optSeed" value=""><button id="btnRandom">Randomize</button></div>
     <div class="opt"><label>Planets</label><div class="seg" id="optPlanets"><button data-v="2">2</button><button data-v="3" class="active">3</button><button data-v="4">4</button></div></div>
     <div class="opt"><label>Quality</label><div class="seg" id="optQuality"><button data-v="medium">Medium</button><button data-v="high" class="active">High</button><button data-v="ultra">Ultra</button></div></div>
-    <div class="opt"><label>Style</label><div class="seg" id="optStyle"><button data-v="realism" class="active">Realism</button><button data-v="cel">Cel</button><button data-v="spiderverse">Spider-Verse</button><button data-v="comic">Comic</button><button data-v="bar">BAR</button><button data-v="inksteel">Ink &amp; Steel</button><button data-v="diorama">Diorama</button></div></div>
+    <div class="opt"><label>Style</label><div class="seg" id="optStyle"><button data-v="realism" class="active">Realism</button><button data-v="cel">Cel</button><button data-v="spiderverse">Spider-Verse</button><button data-v="comic">Comic</button><button data-v="bar">BAR</button><button data-v="inksteel">Ink &amp; Steel</button><button data-v="reliquary">Reliquary</button><button data-v="coil">Coil</button><button data-v="poly">Poly</button><button data-v="diorama">Diorama</button></div></div>
     <div id="styleHint"></div>
     <button class="primary" id="launch">LAUNCH</button>
     <div id="help"><b>WASD / drag</b> orbit &nbsp; <b>Wheel</b> zoom (zoom out for the system view) &nbsp; <b>V</b> system view &nbsp; <b>Q/E</b> rotate &nbsp; <b>[ ]</b> art style<br><b>Left click / drag</b> select &nbsp; <b>Right click</b> move / attack (any planet) &nbsp; <b>A</b> attack-move &nbsp; <b>S</b> stop &nbsp; <b>N</b> nuke<br><b>Shift</b> queue / multi-place &nbsp; <b>Ctrl+1-9</b> groups &nbsp; <b>H</b> commander &nbsp; <b>Tab</b> idle fabber &nbsp; <b>P</b> pause<br>Orbital launchers build orbital fabbers that fly between planets. Link two teleporters to march ground armies across the system. Nukes hit any planet; anti-nukes stop them.</div>
@@ -377,7 +379,7 @@ function makePeriodicWorley(seed) {
     out.f1 = Math.sqrt(f1); out.f2 = Math.sqrt(f2); out.id = id; return out;
   };
 }
-const VERSION = '3.3.0';
+const VERSION = '3.4.0';
 function cubicBezier(p0, p1, p2, p3, t, out) {
   const mt = 1 - t; const a = mt * mt * mt, b = 3 * mt * mt * t, c = 3 * mt * t * t, d = t * t * t;
   return out.set(p0.x * a + p1.x * b + p2.x * c + p3.x * d, p0.y * a + p1.y * b + p2.y * c + p3.y * d, p0.z * a + p1.z * b + p2.z * c + p3.z * d);
@@ -743,12 +745,22 @@ const STYLE_U = {
   uStFaction: { value: 0 },        // per-team treatment (Spider-Verse)
   uStTime: { value: 0 },
   uStDebug: { value: 0 },          // 1 = show direct-light term, 2 = show shade, 3 = indirect
+  uStTooth: { value: 0 },          // painted 'tooth': world-space value noise on every surface
+  uStJitter: { value: 0 },         // per-cell offset of the toon band boundary (knife-stroke patchwork)
+  uStRim: { value: 0 },            // neon rim light strength (team colour on units, uStRimColor elsewhere)
+  uStTile: { value: 0 },           // mosaic tiles with dark grout
+  uStFlat: { value: 0 },           // flat facet shading from screen-space derivatives (low-poly look)
   uStShadowTint: { value: new THREE.Vector3(1, 1, 1) },
   uStLitTint: { value: new THREE.Vector3(1, 1, 1) },
+  uStRimColor: { value: new THREE.Vector3(1, 0.2, 0.8) },
+  uStFxGain: { value: 1 },         // particle brightness
+  uStFxTint: { value: new THREE.Vector3(1, 1, 1) },
 };
 
 const STYLE_GLSL = `
-uniform float uStLod, uStNormal, uStPoster, uStSat, uStBands, uStSoft, uStKey, uStAmbient, uStSpec, uStHatch, uStHalftone, uStOutline, uStClay, uStFaction, uStTime, uStDebug; uniform vec3 uStShadowTint, uStLitTint;
+uniform float uStLod, uStNormal, uStPoster, uStSat, uStBands, uStSoft, uStKey, uStAmbient, uStSpec, uStHatch, uStHalftone, uStOutline, uStClay, uStFaction, uStTime, uStDebug, uStTooth, uStJitter, uStRim, uStTile, uStFlat; uniform vec3 uStShadowTint, uStLitTint, uStRimColor;
+float stHash3(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
+float stNoise3(vec3 p) { vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(mix(stHash3(i), stHash3(i + vec3(1, 0, 0)), f.x), mix(stHash3(i + vec3(0, 1, 0)), stHash3(i + vec3(1, 1, 0)), f.x), f.y), mix(mix(stHash3(i + vec3(0, 0, 1)), stHash3(i + vec3(1, 0, 1)), f.x), mix(stHash3(i + vec3(0, 1, 1)), stHash3(i + vec3(1, 1, 1)), f.x), f.y), f.z); }
 float stLum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 vec3 stPoster(vec3 c, float n) { return n > 0.5 ? floor(c * n + 0.5) / n : c; }
 vec3 stSat(vec3 c, float s) { float l = stLum(c); return max(vec3(0.0), mix(vec3(l), c, s)); }
@@ -771,7 +783,8 @@ const STYLE_LIGHT_GLSL = `
   #endif
   if (uStBands > 0.5) {
     // toon: lift low sun angles into the lit band, keep the shadow side a tinted ~45% of the key light
-    float q = stBand(pow(stDL, 0.6), uStBands, uStSoft);
+    float stJit = uStJitter > 0.0 ? (stHash3(floor(vAtW * 0.45)) - 0.5) * uStJitter : 0.0;
+    float q = stBand(clamp(pow(stDL, 0.6) + stJit, 0.0, 1.0), uStBands, uStSoft);
     vec3 unlit = stAlb * uStShadowTint * uStKey * 0.42 * uStAmbient + stAlb * stIL * 0.35;
     vec3 lit = stAlb * uStLitTint * uStKey + stAlb * stIL * 0.35;
     float sq = smoothstep(0.2, 0.3, stLum(stSpec) / max(uStKey, 1e-3)) * 0.5 * uStSpec;
@@ -781,7 +794,14 @@ const STYLE_LIGHT_GLSL = `
     outgoingLight = (outgoingLight - totalEmissiveRadiance - stSpec) * mix(vec3(1.0), uStShadowTint, sh) * mix(vec3(1.0), uStLitTint, stDL) + stSpec * uStSpec + totalEmissiveRadiance;
   }
   stDbg1 = outgoingLight;
+  if (uStTooth > 0.0) { float t = stNoise3(vAtW * 1.7) * 0.6 + stNoise3(vAtW * 6.5) * 0.4; outgoingLight *= 1.0 + (t - 0.5) * uStTooth; }
+  if (uStTile > 0.0) { vec3 tp = vAtW * 0.42; vec3 tf = fract(tp); vec3 edge = min(tf, 1.0 - tf); float g = smoothstep(0.0, 0.07, min(edge.x, min(edge.y, edge.z))); float cj = stHash3(floor(tp)); outgoingLight *= mix(1.0 - 0.55 * uStTile, 1.0, g) * (1.0 + (cj - 0.5) * 0.35 * uStTile); }
   float stNV = clamp(dot(normal, geometryViewDir), 0.0, 1.0);
+  if (uStRim > 0.0) { float rim = pow(1.0 - stNV, 3.2) * (0.35 + 0.65 * stDL); vec3 rc = uStRimColor;
+    #ifdef ST_HAS_TEAM
+    rc = vTeamColor;
+    #endif
+    outgoingLight += rc * rim * uStRim; }
   if (uStClay > 0.0) { float rim = pow(1.0 - stNV, 3.0); outgoingLight += stAlb * rim * uStClay * 0.7 * (0.35 + 0.65 * stDL); }
   float stShade = 1.0 - smoothstep(0.15, 0.6, stDL);
   float stHatchAmt = uStHatch, stDotAmt = uStHalftone;
@@ -850,6 +870,31 @@ const STYLES = [
       grade: { sat: 1.15, con: 1.12, vig: 0.3, sharp: 0.4, ca: 0, grain: 0.03, poster: 0, paper: 0.1, shadowTint: V(0.96, 0.97, 1.03), highTint: V(1.03, 1.0, 0.97) } },
   },
   {
+    id: 'reliquary', name: 'Reliquary', hint: 'From Cosmic Conquest: Reliquary — painted cutscene illustration: violet-hued shadows, band boundaries jittered per cell into knife strokes, faction-neon rim light, wet posterised specular, paint tooth, ink before bloom, canvas grain.',
+    mat: { lod: 4, normal: 0.1, poster: 0, sat: 1.24, bands: 3, soft: 0.03, ambient: 1.1, spec: 0.9, hatch: 0, halftone: 0.6, outline: 0.25, clay: 0, faction: 0, tooth: 0.35, jitter: 0.5, rim: 0.85, rimColor: V(1.0, 0.18, 0.84), tile: 0, flat: 0, fxGain: 0.55, fxTint: V(0.9, 0.75, 1.0), shadowTint: V(0.5, 0.36, 1.0), litTint: V(1.06, 0.96, 1.02) },
+    light: { sun: 3.2, sunColor: 0xffe6ff, hemi: 0.6, env: 0.6, fill: 0.45, fillColor: 0x8b5cf6 },
+    atmo: { aerial: 1.2, sunI: 0.75 },
+    post: { tone: 'aces', exposure: 1.0, gtao: false, bloom: [0.6, 0.6, 0.6], edge: { thick: 1.8, depthT: 0.05, normalT: 0.45, color: V(0.06, 0.02, 0.12), strength: 0.95, boil: 0 }, halftone: null, tilt: null,
+      grade: { sat: 1.1, con: 1.1, vig: 0.54, sharp: 0, ca: 0.012, grain: 0.042, poster: 0, paper: 0.2, shadowTint: V(0.62, 0.48, 1.15), highTint: V(1.08, 0.94, 1.1) } },
+  },
+  {
+    id: 'coil', name: 'The Coil', hint: 'From Cosmic Conquest: The Coil — night cobalt duotone, mosaic tiles with dark grout, cyan glows and team-neon rims, heavy vignette, ink that darkens.',
+    mat: { lod: 4, normal: 0.1, poster: 0, sat: 0.9, bands: 3, soft: 0.03, ambient: 1.3, spec: 0.8, hatch: 0, halftone: 0.3, outline: 0.35, clay: 0, faction: 0, tooth: 0.25, jitter: 0.45, rim: 0.7, rimColor: V(0.22, 0.9, 1.0), tile: 0.7, flat: 0, fxGain: 0.45, fxTint: V(0.55, 0.85, 1.0), shadowTint: V(0.42, 0.52, 1.0), litTint: V(0.85, 0.98, 1.15) },
+    light: { sun: 3.2, sunColor: 0xcfe4ff, hemi: 0.75, env: 0.55, fill: 0.5, fillColor: 0x38e8ff },
+    atmo: { aerial: 1.1, sunI: 0.5 },
+    post: { tone: 'aces', exposure: 1.0, gtao: false, bloom: [0.9, 0.65, 0.6], edge: { thick: 1.8, depthT: 0.05, normalT: 0.45, color: V(0.01, 0.02, 0.06), strength: 1.0, boil: 0 }, halftone: null, tilt: null,
+      grade: { sat: 0.72, con: 1.15, vig: 0.62, sharp: 0, ca: 0.006, grain: 0.05, poster: 0, paper: 0.12, shadowTint: V(0.4, 0.5, 1.05), highTint: V(0.92, 1.04, 1.18) } },
+  },
+  {
+    id: 'poly', name: 'Poly', hint: 'Low-poly art: flat-shaded facets, flat colours, no textures or outlines; a medium-poly world mesh that applies on the next launch.',
+    mat: { lod: 8, normal: 0, poster: 0, sat: 1.2, bands: 0, soft: 0.06, ambient: 1, spec: 0.5, hatch: 0, halftone: 0, outline: 0, clay: 0, faction: 0, tooth: 0, jitter: 0, rim: 0, rimColor: V(1, 1, 1), tile: 0, flat: 1, fxGain: 0.8, shadowTint: V(0.82, 0.88, 1.1), litTint: V(1.04, 1.0, 0.94) },
+    light: { sun: 3.4, sunColor: 0xfff4e6, hemi: 0.35, env: 0.6, fill: 0.2, fillColor: 0xa8c8ff },
+    atmo: { aerial: 0.8, sunI: 0.9 },
+    post: { tone: 'aces', exposure: 1.05, gtao: true, bloom: [0.15, 0.5, 0.92], edge: null, halftone: null, tilt: null,
+      grade: { sat: 1.12, con: 1.08, vig: 0.3, sharp: 0, ca: 0, grain: 0.02, poster: 0, paper: 0, shadowTint: V(0.96, 0.98, 1.03), highTint: V(1.03, 1.0, 0.97) } },
+    world: { detail: 7, grass: false },
+  },
+  {
     id: 'diorama', name: 'Diorama', hint: 'Original: a war table of painted miniatures — matte clay surfaces, studio key and fill lights, tilt-shift focus, no haze.',
     mat: { lod: 1.2, normal: 0.6, poster: 0, sat: 1.28, bands: 0, soft: 0.06, ambient: 1, spec: 0.45, hatch: 0, halftone: 0, outline: 0.15, clay: 1, faction: 0, shadowTint: V(0.8, 0.82, 0.96), litTint: V(1.04, 1.0, 0.94) },
     light: { sun: 3.6, sunColor: 0xffe6c8, hemi: 0.3, env: 0.7, fill: 0.5, fillColor: 0xa8c8ff },
@@ -864,6 +909,7 @@ function applyStyleUniforms(m) {
   STYLE_U.uStAmbient.value = m.ambient; STYLE_U.uStSpec.value = m.spec; STYLE_U.uStHatch.value = m.hatch; STYLE_U.uStHalftone.value = m.halftone; STYLE_U.uStOutline.value = m.outline; STYLE_U.uStClay.value = m.clay; STYLE_U.uStFaction.value = m.faction;
   const norm = (c) => { const l = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]; return [c[0] / l, c[1] / l, c[2] / l]; };
   STYLE_U.uStShadowTint.value.set(...norm(m.shadowTint)); STYLE_U.uStLitTint.value.set(...norm(m.litTint));
+  STYLE_U.uStTooth.value = m.tooth || 0; STYLE_U.uStJitter.value = m.jitter || 0; STYLE_U.uStRim.value = m.rim || 0; STYLE_U.uStTile.value = m.tile || 0; STYLE_U.uStFlat.value = m.flat || 0; STYLE_U.uStRimColor.value.set(...(m.rimColor || [1, 1, 1])); STYLE_U.uStFxGain.value = m.fxGain === undefined ? 1 : m.fxGain; STYLE_U.uStFxTint.value.set(...(m.fxTint || [1, 1, 1]));
 }
 
 return { STYLE_U, STYLE_GLSL, STYLE_LIGHT_GLSL, STYLES, styleById, applyStyleUniforms };
@@ -1100,7 +1146,7 @@ function injectFog(mat, uniforms, key) {
     shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vAtW;').replace('#include <project_vertex>', '#include <project_vertex>\nvec4 atwp = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\natwp = instanceMatrix * atwp;\n#endif\nvAtW = (modelMatrix * atwp).xyz;');
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + ATMO_GLSL + '\n' + STYLE_GLSL + '\nvarying vec3 vAtW;')
       .replace('#include <alphamap_fragment>', 'diffuseColor.rgb = stSat(stPoster(diffuseColor.rgb, uStPoster), uStSat);\n#include <alphamap_fragment>')
-      .replace('#include <emissivemap_fragment>', 'normal = normalize(mix(nonPerturbedNormal, normal, uStNormal));\n#include <emissivemap_fragment>')
+      .replace('#include <emissivemap_fragment>', 'normal = normalize(mix(nonPerturbedNormal, normal, uStNormal));\n#ifndef USE_ALPHATEST\nif (uStFlat > 0.5) { vec3 stFn = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition))); if (dot(stFn, nonPerturbedNormal) < 0.0) stFn = -stFn; normal = stFn; }\n#endif\n#include <emissivemap_fragment>')
       .replace('#include <opaque_fragment>', STYLE_LIGHT_GLSL + '\n#include <opaque_fragment>')
       .replace('#include <tonemapping_fragment>', '{ vec3 atT, atS; atAerial(cameraPosition, vAtW, atT, atS); gl_FragColor.rgb = gl_FragColor.rgb * atT + atS; }\n#include <tonemapping_fragment>');
   };
@@ -1440,6 +1486,7 @@ class Planet {
           vec3 bw = pow(abs(n), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
           vec3 n1 = wnSample(vL * 0.03 + vec3(uTime * 0.012, 0.0, uTime * 0.009), n, bw); vec3 n2 = wnSample(vL * 0.11 - vec3(uTime * 0.02, uTime * 0.007, 0.0), n, bw);
           vec3 np = normalize(mix(n, normalize(n1 * 0.5 + n2 * 0.8), 0.16));
+          if (uStFlat > 0.5) { vec3 fn = normalize(cross(dFdx(vW), dFdy(vW))); if (dot(fn, n) < 0.0) fn = -fn; n = fn; np = fn; }
           float NoV = max(dot(np, v), 0.0); float fres = 0.02 + 0.98 * pow(1.0 - NoV, 5.0);
           float diff = max(dot(n, uSun), 0.0);
           vec3 h = normalize(uSun + v); float NoH = max(dot(np, h), 0.0); float spec = pow(NoH, 700.0) * 3.0 + pow(NoH, 48.0) * 0.06;
@@ -2188,6 +2235,7 @@ return { buildModel, makeUnitMaterial, UnitRenderer };
 // ===== effects.js =====
 const __mod_effects = (() => {
 
+const { STYLE_U } = __mod_style;
 const { frameQuat, anyTangent, clamp, lerp } = __mod_util;
 
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
@@ -2205,7 +2253,7 @@ class GPUParticles {
     this.cap = cap; this.head = 0; this.dirty = false; this.time = 0; this.centerFor = null;
     const g = instancedQuad(cap);
     this.aPos0 = iattr(g, 'aPos0', cap, 3); this.aVel = iattr(g, 'aVel', cap, 3); this.aInfo = iattr(g, 'aInfo', cap, 4); this.aColor = iattr(g, 'aColor', cap, 3); this.aExtra = iattr(g, 'aExtra', cap, 3); this.aCenter = iattr(g, 'aCenter', cap, 3);
-    this.uniforms = { uTime: { value: 0 } };
+    this.uniforms = { uFxGain: STYLE_U.uStFxGain, uFxTint: STYLE_U.uStFxTint, uTime: { value: 0 } };
     const mat = new THREE.ShaderMaterial({
       uniforms: this.uniforms, transparent: true, depthWrite: false, depthTest: true, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
       vertexShader: `uniform float uTime; attribute vec3 aPos0; attribute vec3 aVel; attribute vec4 aInfo; attribute vec3 aColor; attribute vec3 aExtra; attribute vec3 aCenter;
@@ -2221,8 +2269,8 @@ class GPUParticles {
           vec4 mv = modelViewMatrix * vec4(p, 1.0); mv.xy += off; gl_Position = projectionMatrix * mv;
           float fade = (1.0 - smoothstep(0.5, 1.0, f)) * smoothstep(0.0, 0.03, f); vColor = vec4(aColor, fade); }`,
       fragmentShader: additive
-        ? `varying vec2 vUv; varying vec4 vColor; void main(){ vec2 d = vUv - 0.5; float r = length(d)*2.0; float a = pow(max(0.0, 1.0 - r), ${sharp ? '0.8' : '2.0'}); gl_FragColor = vec4(vColor.rgb * 2.2, a * vColor.a); }`
-        : `varying vec2 vUv; varying vec4 vColor; void main(){ vec2 d = vUv - 0.5; float r = length(d)*2.0; float a = pow(max(0.0, 1.0 - r), 1.6); gl_FragColor = vec4(vColor.rgb, a * vColor.a * 0.7); }`,
+        ? `uniform vec3 uFxTint; uniform float uFxGain; varying vec2 vUv; varying vec4 vColor; void main(){ vec2 d = vUv - 0.5; float r = length(d)*2.0; float a = pow(max(0.0, 1.0 - r), ${sharp ? '0.8' : '2.0'}); gl_FragColor = vec4(vColor.rgb * uFxTint * uFxGain * 2.2, a * vColor.a); }`
+        : `uniform vec3 uFxTint; uniform float uFxGain; varying vec2 vUv; varying vec4 vColor; void main(){ vec2 d = vUv - 0.5; float r = length(d)*2.0; float a = pow(max(0.0, 1.0 - r), 1.6); gl_FragColor = vec4(vColor.rgb * uFxTint * uFxGain, a * vColor.a * 0.7); }`,
     });
     this.mesh = new THREE.Mesh(g, mat); this.mesh.frustumCulled = false; this.mesh.renderOrder = renderOrder;
   }
@@ -3795,6 +3843,7 @@ class UI {
     for (const [id, v] of [['optDiff', s.difficulty], ['optBiome', s.biome], ['optQuality', s.quality], ['optPlanets', String(s.planets)]]) $(id).querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.v === v));
     $('optSeed').value = s.seed; this.syncStyle();
   }
+  hint(msg, ms = 2600) { $('hint').textContent = msg; this._hintUntil = performance.now() + ms; }
   syncStyle() {
     const id = this.app.style ? this.app.style.id : this.app.settings.style;
     $('optStyle').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.v === id)); const sel = $('styleSel'); if (sel.value !== id) sel.value = id;
@@ -3937,6 +3986,7 @@ class UI {
   }
   updateHint() {
     const h = $('hint'); const m = $('modeTag');
+    if (this._hintUntil > performance.now() && !this.placing && !this.mode) { m.textContent = ''; return; }
     if (this.placing) { const d = DEFS[this.placing.defId]; h.textContent = this.placing.valid ? `Place ${d.name} on ${this.placing.planet ? this.placing.planet.name : ''} — click to build, shift for multiple, Esc to cancel` : (this.placing.reason || 'Cannot build here'); m.textContent = 'PLACEMENT'; }
     else if (this.mode === 'attack') { h.textContent = 'Attack-move: click a location or target (any planet)'; m.textContent = 'ATTACK MOVE'; }
     else if (this.mode === 'rally') { h.textContent = 'Click to set the factory rally point'; m.textContent = 'SET RALLY'; }
@@ -4203,6 +4253,9 @@ app.setStyle = (id) => {
   gtao.enabled = app.settings.quality !== 'medium' && p.gtao !== false;
   if (app.system) for (const pl of app.system.planets) { if (!pl.atBase) pl.atBase = { I: pl.uniforms.uAtI.value, K: pl.uniforms.uAtK.value }; pl.uniforms.uAtI.value = pl.atBase.I * st.atmo.sunI; pl.uniforms.uAtK.value = pl.atBase.K * st.atmo.aerial; }
   envT = -1e9; if (app.ui) app.ui.syncStyle();
+  // a style that asks for a different world mesh: rebuild now in the menu, otherwise it applies on the next launch
+  const wantDetail = (st.world && st.world.detail) || (app.settings.quality === 'medium' ? 7 : 8);
+  if (app.system && app.worldDetail && wantDetail !== app.worldDetail) { if (app.state === 'menu' && !app.generating) app.regenPlanet(); else if (app.ui && app.ui.hint) app.ui.hint('Mesh detail for this style applies on the next launch'); }
 };
 app.cycleStyle = (dir) => { const i = STYLES.findIndex((s) => s.id === (app.style ? app.style.id : app.settings.style)); app.setStyle(STYLES[(i + dir + STYLES.length) % STYLES.length].id); };
 
@@ -4237,7 +4290,9 @@ async function createWorld() {
   if (app.system) { scene.remove(app.system.group); app.system.dispose(); }
   if (app.fxGroup) scene.remove(app.fxGroup);
   const s = app.settings; const q = s.quality;
-  const system = new StarSystem({ seed: hashString(String(s.seed || 'titan')), biome: s.biome, planetCount: s.planets, quality: q, detailMain: q === 'medium' ? 7 : 8, detailOther: q === 'ultra' ? 7 : 6 });
+  const stWorld = (app.style && app.style.world) || (styleById(app.settings.style).world) || {};
+  const detailMain = stWorld.detail || (q === 'medium' ? 7 : 8); app.worldDetail = detailMain;
+  const system = new StarSystem({ seed: hashString(String(s.seed || 'titan')), biome: s.biome, planetCount: s.planets, quality: q, detailMain, detailOther: Math.min(detailMain, q === 'ultra' ? 7 : 6) });
   await system.generateAsync((msg) => { $('loadingText').textContent = msg.toUpperCase(); }); scene.add(system.group);
   app.system = system; cam.system = system; cam.planet = system.planets[0];
   app.fxGroup = new THREE.Group(); scene.add(app.fxGroup);
@@ -4306,7 +4361,7 @@ function advance(dt, render = true) {
   } else if (app.fx) app.fx.update(dt);
   audio.frame(); audio.listener = cam.anchor; audio.camDist = cam.mode === 'system' ? 3000 : cam.dist;
   cam.update(dt); app.system.update(dt, camera);
-  cam.planet.updateGrass(cam.anchor, camera.position, simTime + (app.state === 'menu' ? performance.now() / 1000 : 0), cam.mode === 'planet' && cam.dist < 130 && app.state !== 'menu');
+  cam.planet.updateGrass(cam.anchor, camera.position, simTime + (app.state === 'menu' ? performance.now() / 1000 : 0), cam.mode === 'planet' && cam.dist < 130 && app.state !== 'menu' && !(app.style && app.style.world && app.style.world.grass === false));
   if (!render) return;
   renderUnits(simTime);
   app.fx.beginFrame(); if (g) g.renderProjectiles(app.fx); if (g && app.state !== 'menu') ui.frame(); app.fx.endFrame();

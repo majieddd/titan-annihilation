@@ -161,7 +161,7 @@ export function injectFog(mat, uniforms, key) {
     shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vAtW;').replace('#include <project_vertex>', '#include <project_vertex>\nvec4 atwp = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\natwp = instanceMatrix * atwp;\n#endif\nvAtW = (modelMatrix * atwp).xyz;');
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + ATMO_GLSL + '\n' + STYLE_GLSL + '\nvarying vec3 vAtW;')
       .replace('#include <alphamap_fragment>', 'diffuseColor.rgb = stSat(stPoster(diffuseColor.rgb, uStPoster), uStSat);\n#include <alphamap_fragment>')
-      .replace('#include <emissivemap_fragment>', 'normal = normalize(mix(nonPerturbedNormal, normal, uStNormal));\n#include <emissivemap_fragment>')
+      .replace('#include <emissivemap_fragment>', 'normal = normalize(mix(nonPerturbedNormal, normal, uStNormal));\n#ifndef USE_ALPHATEST\nif (uStFlat > 0.5) { vec3 stFn = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition))); if (dot(stFn, nonPerturbedNormal) < 0.0) stFn = -stFn; normal = stFn; }\n#endif\n#include <emissivemap_fragment>')
       .replace('#include <opaque_fragment>', STYLE_LIGHT_GLSL + '\n#include <opaque_fragment>')
       .replace('#include <tonemapping_fragment>', '{ vec3 atT, atS; atAerial(cameraPosition, vAtW, atT, atS); gl_FragColor.rgb = gl_FragColor.rgb * atT + atS; }\n#include <tonemapping_fragment>');
   };
@@ -501,6 +501,7 @@ export class Planet {
           vec3 bw = pow(abs(n), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
           vec3 n1 = wnSample(vL * 0.03 + vec3(uTime * 0.012, 0.0, uTime * 0.009), n, bw); vec3 n2 = wnSample(vL * 0.11 - vec3(uTime * 0.02, uTime * 0.007, 0.0), n, bw);
           vec3 np = normalize(mix(n, normalize(n1 * 0.5 + n2 * 0.8), 0.16));
+          if (uStFlat > 0.5) { vec3 fn = normalize(cross(dFdx(vW), dFdy(vW))); if (dot(fn, n) < 0.0) fn = -fn; n = fn; np = fn; }
           float NoV = max(dot(np, v), 0.0); float fres = 0.02 + 0.98 * pow(1.0 - NoV, 5.0);
           float diff = max(dot(n, uSun), 0.0);
           vec3 h = normalize(uSun + v); float NoH = max(dot(np, h), 0.0); float spec = pow(NoH, 700.0) * 3.0 + pow(NoH, 48.0) * 0.06;

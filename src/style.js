@@ -25,12 +25,22 @@ export const STYLE_U = {
   uStFaction: { value: 0 },        // per-team treatment (Spider-Verse)
   uStTime: { value: 0 },
   uStDebug: { value: 0 },          // 1 = show direct-light term, 2 = show shade, 3 = indirect
+  uStTooth: { value: 0 },          // painted 'tooth': world-space value noise on every surface
+  uStJitter: { value: 0 },         // per-cell offset of the toon band boundary (knife-stroke patchwork)
+  uStRim: { value: 0 },            // neon rim light strength (team colour on units, uStRimColor elsewhere)
+  uStTile: { value: 0 },           // mosaic tiles with dark grout
+  uStFlat: { value: 0 },           // flat facet shading from screen-space derivatives (low-poly look)
   uStShadowTint: { value: new THREE.Vector3(1, 1, 1) },
   uStLitTint: { value: new THREE.Vector3(1, 1, 1) },
+  uStRimColor: { value: new THREE.Vector3(1, 0.2, 0.8) },
+  uStFxGain: { value: 1 },         // particle brightness
+  uStFxTint: { value: new THREE.Vector3(1, 1, 1) },
 };
 
 export const STYLE_GLSL = `
-uniform float uStLod, uStNormal, uStPoster, uStSat, uStBands, uStSoft, uStKey, uStAmbient, uStSpec, uStHatch, uStHalftone, uStOutline, uStClay, uStFaction, uStTime, uStDebug; uniform vec3 uStShadowTint, uStLitTint;
+uniform float uStLod, uStNormal, uStPoster, uStSat, uStBands, uStSoft, uStKey, uStAmbient, uStSpec, uStHatch, uStHalftone, uStOutline, uStClay, uStFaction, uStTime, uStDebug, uStTooth, uStJitter, uStRim, uStTile, uStFlat; uniform vec3 uStShadowTint, uStLitTint, uStRimColor;
+float stHash3(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
+float stNoise3(vec3 p) { vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(mix(stHash3(i), stHash3(i + vec3(1, 0, 0)), f.x), mix(stHash3(i + vec3(0, 1, 0)), stHash3(i + vec3(1, 1, 0)), f.x), f.y), mix(mix(stHash3(i + vec3(0, 0, 1)), stHash3(i + vec3(1, 0, 1)), f.x), mix(stHash3(i + vec3(0, 1, 1)), stHash3(i + vec3(1, 1, 1)), f.x), f.y), f.z); }
 float stLum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 vec3 stPoster(vec3 c, float n) { return n > 0.5 ? floor(c * n + 0.5) / n : c; }
 vec3 stSat(vec3 c, float s) { float l = stLum(c); return max(vec3(0.0), mix(vec3(l), c, s)); }
@@ -53,7 +63,8 @@ export const STYLE_LIGHT_GLSL = `
   #endif
   if (uStBands > 0.5) {
     // toon: lift low sun angles into the lit band, keep the shadow side a tinted ~45% of the key light
-    float q = stBand(pow(stDL, 0.6), uStBands, uStSoft);
+    float stJit = uStJitter > 0.0 ? (stHash3(floor(vAtW * 0.45)) - 0.5) * uStJitter : 0.0;
+    float q = stBand(clamp(pow(stDL, 0.6) + stJit, 0.0, 1.0), uStBands, uStSoft);
     vec3 unlit = stAlb * uStShadowTint * uStKey * 0.42 * uStAmbient + stAlb * stIL * 0.35;
     vec3 lit = stAlb * uStLitTint * uStKey + stAlb * stIL * 0.35;
     float sq = smoothstep(0.2, 0.3, stLum(stSpec) / max(uStKey, 1e-3)) * 0.5 * uStSpec;
@@ -63,7 +74,14 @@ export const STYLE_LIGHT_GLSL = `
     outgoingLight = (outgoingLight - totalEmissiveRadiance - stSpec) * mix(vec3(1.0), uStShadowTint, sh) * mix(vec3(1.0), uStLitTint, stDL) + stSpec * uStSpec + totalEmissiveRadiance;
   }
   stDbg1 = outgoingLight;
+  if (uStTooth > 0.0) { float t = stNoise3(vAtW * 1.7) * 0.6 + stNoise3(vAtW * 6.5) * 0.4; outgoingLight *= 1.0 + (t - 0.5) * uStTooth; }
+  if (uStTile > 0.0) { vec3 tp = vAtW * 0.42; vec3 tf = fract(tp); vec3 edge = min(tf, 1.0 - tf); float g = smoothstep(0.0, 0.07, min(edge.x, min(edge.y, edge.z))); float cj = stHash3(floor(tp)); outgoingLight *= mix(1.0 - 0.55 * uStTile, 1.0, g) * (1.0 + (cj - 0.5) * 0.35 * uStTile); }
   float stNV = clamp(dot(normal, geometryViewDir), 0.0, 1.0);
+  if (uStRim > 0.0) { float rim = pow(1.0 - stNV, 3.2) * (0.35 + 0.65 * stDL); vec3 rc = uStRimColor;
+    #ifdef ST_HAS_TEAM
+    rc = vTeamColor;
+    #endif
+    outgoingLight += rc * rim * uStRim; }
   if (uStClay > 0.0) { float rim = pow(1.0 - stNV, 3.0); outgoingLight += stAlb * rim * uStClay * 0.7 * (0.35 + 0.65 * stDL); }
   float stShade = 1.0 - smoothstep(0.15, 0.6, stDL);
   float stHatchAmt = uStHatch, stDotAmt = uStHalftone;
@@ -132,6 +150,31 @@ export const STYLES = [
       grade: { sat: 1.15, con: 1.12, vig: 0.3, sharp: 0.4, ca: 0, grain: 0.03, poster: 0, paper: 0.1, shadowTint: V(0.96, 0.97, 1.03), highTint: V(1.03, 1.0, 0.97) } },
   },
   {
+    id: 'reliquary', name: 'Reliquary', hint: 'From Cosmic Conquest: Reliquary — painted cutscene illustration: violet-hued shadows, band boundaries jittered per cell into knife strokes, faction-neon rim light, wet posterised specular, paint tooth, ink before bloom, canvas grain.',
+    mat: { lod: 4, normal: 0.1, poster: 0, sat: 1.24, bands: 3, soft: 0.03, ambient: 1.1, spec: 0.9, hatch: 0, halftone: 0.6, outline: 0.25, clay: 0, faction: 0, tooth: 0.35, jitter: 0.5, rim: 0.85, rimColor: V(1.0, 0.18, 0.84), tile: 0, flat: 0, fxGain: 0.55, fxTint: V(0.9, 0.75, 1.0), shadowTint: V(0.5, 0.36, 1.0), litTint: V(1.06, 0.96, 1.02) },
+    light: { sun: 3.2, sunColor: 0xffe6ff, hemi: 0.6, env: 0.6, fill: 0.45, fillColor: 0x8b5cf6 },
+    atmo: { aerial: 1.2, sunI: 0.75 },
+    post: { tone: 'aces', exposure: 1.0, gtao: false, bloom: [0.6, 0.6, 0.6], edge: { thick: 1.8, depthT: 0.05, normalT: 0.45, color: V(0.06, 0.02, 0.12), strength: 0.95, boil: 0 }, halftone: null, tilt: null,
+      grade: { sat: 1.1, con: 1.1, vig: 0.54, sharp: 0, ca: 0.012, grain: 0.042, poster: 0, paper: 0.2, shadowTint: V(0.62, 0.48, 1.15), highTint: V(1.08, 0.94, 1.1) } },
+  },
+  {
+    id: 'coil', name: 'The Coil', hint: 'From Cosmic Conquest: The Coil — night cobalt duotone, mosaic tiles with dark grout, cyan glows and team-neon rims, heavy vignette, ink that darkens.',
+    mat: { lod: 4, normal: 0.1, poster: 0, sat: 0.9, bands: 3, soft: 0.03, ambient: 1.3, spec: 0.8, hatch: 0, halftone: 0.3, outline: 0.35, clay: 0, faction: 0, tooth: 0.25, jitter: 0.45, rim: 0.7, rimColor: V(0.22, 0.9, 1.0), tile: 0.7, flat: 0, fxGain: 0.45, fxTint: V(0.55, 0.85, 1.0), shadowTint: V(0.42, 0.52, 1.0), litTint: V(0.85, 0.98, 1.15) },
+    light: { sun: 3.2, sunColor: 0xcfe4ff, hemi: 0.75, env: 0.55, fill: 0.5, fillColor: 0x38e8ff },
+    atmo: { aerial: 1.1, sunI: 0.5 },
+    post: { tone: 'aces', exposure: 1.0, gtao: false, bloom: [0.9, 0.65, 0.6], edge: { thick: 1.8, depthT: 0.05, normalT: 0.45, color: V(0.01, 0.02, 0.06), strength: 1.0, boil: 0 }, halftone: null, tilt: null,
+      grade: { sat: 0.72, con: 1.15, vig: 0.62, sharp: 0, ca: 0.006, grain: 0.05, poster: 0, paper: 0.12, shadowTint: V(0.4, 0.5, 1.05), highTint: V(0.92, 1.04, 1.18) } },
+  },
+  {
+    id: 'poly', name: 'Poly', hint: 'Low-poly art: flat-shaded facets, flat colours, no textures or outlines; a medium-poly world mesh that applies on the next launch.',
+    mat: { lod: 8, normal: 0, poster: 0, sat: 1.2, bands: 0, soft: 0.06, ambient: 1, spec: 0.5, hatch: 0, halftone: 0, outline: 0, clay: 0, faction: 0, tooth: 0, jitter: 0, rim: 0, rimColor: V(1, 1, 1), tile: 0, flat: 1, fxGain: 0.8, shadowTint: V(0.82, 0.88, 1.1), litTint: V(1.04, 1.0, 0.94) },
+    light: { sun: 3.4, sunColor: 0xfff4e6, hemi: 0.35, env: 0.6, fill: 0.2, fillColor: 0xa8c8ff },
+    atmo: { aerial: 0.8, sunI: 0.9 },
+    post: { tone: 'aces', exposure: 1.05, gtao: true, bloom: [0.15, 0.5, 0.92], edge: null, halftone: null, tilt: null,
+      grade: { sat: 1.12, con: 1.08, vig: 0.3, sharp: 0, ca: 0, grain: 0.02, poster: 0, paper: 0, shadowTint: V(0.96, 0.98, 1.03), highTint: V(1.03, 1.0, 0.97) } },
+    world: { detail: 7, grass: false },
+  },
+  {
     id: 'diorama', name: 'Diorama', hint: 'Original: a war table of painted miniatures — matte clay surfaces, studio key and fill lights, tilt-shift focus, no haze.',
     mat: { lod: 1.2, normal: 0.6, poster: 0, sat: 1.28, bands: 0, soft: 0.06, ambient: 1, spec: 0.45, hatch: 0, halftone: 0, outline: 0.15, clay: 1, faction: 0, shadowTint: V(0.8, 0.82, 0.96), litTint: V(1.04, 1.0, 0.94) },
     light: { sun: 3.6, sunColor: 0xffe6c8, hemi: 0.3, env: 0.7, fill: 0.5, fillColor: 0xa8c8ff },
@@ -146,4 +189,5 @@ export function applyStyleUniforms(m) {
   STYLE_U.uStAmbient.value = m.ambient; STYLE_U.uStSpec.value = m.spec; STYLE_U.uStHatch.value = m.hatch; STYLE_U.uStHalftone.value = m.halftone; STYLE_U.uStOutline.value = m.outline; STYLE_U.uStClay.value = m.clay; STYLE_U.uStFaction.value = m.faction;
   const norm = (c) => { const l = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]; return [c[0] / l, c[1] / l, c[2] / l]; };
   STYLE_U.uStShadowTint.value.set(...norm(m.shadowTint)); STYLE_U.uStLitTint.value.set(...norm(m.litTint));
+  STYLE_U.uStTooth.value = m.tooth || 0; STYLE_U.uStJitter.value = m.jitter || 0; STYLE_U.uStRim.value = m.rim || 0; STYLE_U.uStTile.value = m.tile || 0; STYLE_U.uStFlat.value = m.flat || 0; STYLE_U.uStRimColor.value.set(...(m.rimColor || [1, 1, 1])); STYLE_U.uStFxGain.value = m.fxGain === undefined ? 1 : m.fxGain; STYLE_U.uStFxTint.value.set(...(m.fxTint || [1, 1, 1]));
 }

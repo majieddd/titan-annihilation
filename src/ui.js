@@ -83,6 +83,7 @@ export class UI {
     for (const [id, v] of [['optDiff', s.difficulty], ['optBiome', s.biome], ['optQuality', s.quality], ['optPlanets', String(s.planets)]]) $(id).querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.v === v));
     $('optSeed').value = s.seed; this.syncStyle();
   }
+  hint(msg, ms = 2600) { $('hint').textContent = msg; this._hintUntil = performance.now() + ms; }
   syncStyle() {
     const id = this.app.style ? this.app.style.id : this.app.settings.style;
     $('optStyle').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.v === id)); const sel = $('styleSel'); if (sel.value !== id) sel.value = id;
@@ -225,6 +226,7 @@ export class UI {
   }
   updateHint() {
     const h = $('hint'); const m = $('modeTag');
+    if (this._hintUntil > performance.now() && !this.placing && !this.mode) { m.textContent = ''; return; }
     if (this.placing) { const d = DEFS[this.placing.defId]; h.textContent = this.placing.valid ? `Place ${d.name} on ${this.placing.planet ? this.placing.planet.name : ''} — click to build, shift for multiple, Esc to cancel` : (this.placing.reason || 'Cannot build here'); m.textContent = 'PLACEMENT'; }
     else if (this.mode === 'attack') { h.textContent = 'Attack-move: click a location or target (any planet)'; m.textContent = 'ATTACK MOVE'; }
     else if (this.mode === 'rally') { h.textContent = 'Click to set the factory rally point'; m.textContent = 'SET RALLY'; }

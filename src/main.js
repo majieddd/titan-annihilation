@@ -127,6 +127,9 @@ app.setStyle = (id) => {
   gtao.enabled = app.settings.quality !== 'medium' && p.gtao !== false;
   if (app.system) for (const pl of app.system.planets) { if (!pl.atBase) pl.atBase = { I: pl.uniforms.uAtI.value, K: pl.uniforms.uAtK.value }; pl.uniforms.uAtI.value = pl.atBase.I * st.atmo.sunI; pl.uniforms.uAtK.value = pl.atBase.K * st.atmo.aerial; }
   envT = -1e9; if (app.ui) app.ui.syncStyle();
+  // a style that asks for a different world mesh: rebuild now in the menu, otherwise it applies on the next launch
+  const wantDetail = (st.world && st.world.detail) || (app.settings.quality === 'medium' ? 7 : 8);
+  if (app.system && app.worldDetail && wantDetail !== app.worldDetail) { if (app.state === 'menu' && !app.generating) app.regenPlanet(); else if (app.ui && app.ui.hint) app.ui.hint('Mesh detail for this style applies on the next launch'); }
 };
 app.cycleStyle = (dir) => { const i = STYLES.findIndex((s) => s.id === (app.style ? app.style.id : app.settings.style)); app.setStyle(STYLES[(i + dir + STYLES.length) % STYLES.length].id); };
 
@@ -161,7 +164,9 @@ async function createWorld() {
   if (app.system) { scene.remove(app.system.group); app.system.dispose(); }
   if (app.fxGroup) scene.remove(app.fxGroup);
   const s = app.settings; const q = s.quality;
-  const system = new StarSystem({ seed: hashString(String(s.seed || 'titan')), biome: s.biome, planetCount: s.planets, quality: q, detailMain: q === 'medium' ? 7 : 8, detailOther: q === 'ultra' ? 7 : 6 });
+  const stWorld = (app.style && app.style.world) || (styleById(app.settings.style).world) || {};
+  const detailMain = stWorld.detail || (q === 'medium' ? 7 : 8); app.worldDetail = detailMain;
+  const system = new StarSystem({ seed: hashString(String(s.seed || 'titan')), biome: s.biome, planetCount: s.planets, quality: q, detailMain, detailOther: Math.min(detailMain, q === 'ultra' ? 7 : 6) });
   await system.generateAsync((msg) => { $('loadingText').textContent = msg.toUpperCase(); }); scene.add(system.group);
   app.system = system; cam.system = system; cam.planet = system.planets[0];
   app.fxGroup = new THREE.Group(); scene.add(app.fxGroup);
@@ -230,7 +235,7 @@ function advance(dt, render = true) {
   } else if (app.fx) app.fx.update(dt);
   audio.frame(); audio.listener = cam.anchor; audio.camDist = cam.mode === 'system' ? 3000 : cam.dist;
   cam.update(dt); app.system.update(dt, camera);
-  cam.planet.updateGrass(cam.anchor, camera.position, simTime + (app.state === 'menu' ? performance.now() / 1000 : 0), cam.mode === 'planet' && cam.dist < 130 && app.state !== 'menu');
+  cam.planet.updateGrass(cam.anchor, camera.position, simTime + (app.state === 'menu' ? performance.now() / 1000 : 0), cam.mode === 'planet' && cam.dist < 130 && app.state !== 'menu' && !(app.style && app.style.world && app.style.world.grass === false));
   if (!render) return;
   renderUnits(simTime);
   app.fx.beginFrame(); if (g) g.renderProjectiles(app.fx); if (g && app.state !== 'menu') ui.frame(); app.fx.endFrame();

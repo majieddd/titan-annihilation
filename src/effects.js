@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { STYLE_U } from './style.js';
 import { frameQuat, anyTangent, clamp, lerp } from './util.js';
 
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
@@ -16,7 +17,7 @@ class GPUParticles {
     this.cap = cap; this.head = 0; this.dirty = false; this.time = 0; this.centerFor = null;
     const g = instancedQuad(cap);
     this.aPos0 = iattr(g, 'aPos0', cap, 3); this.aVel = iattr(g, 'aVel', cap, 3); this.aInfo = iattr(g, 'aInfo', cap, 4); this.aColor = iattr(g, 'aColor', cap, 3); this.aExtra = iattr(g, 'aExtra', cap, 3); this.aCenter = iattr(g, 'aCenter', cap, 3);
-    this.uniforms = { uTime: { value: 0 } };
+    this.uniforms = { uFxGain: STYLE_U.uStFxGain, uFxTint: STYLE_U.uStFxTint, uTime: { value: 0 } };
     const mat = new THREE.ShaderMaterial({
       uniforms: this.uniforms, transparent: true, depthWrite: false, depthTest: true, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
       vertexShader: `uniform float uTime; attribute vec3 aPos0; attribute vec3 aVel; attribute vec4 aInfo; attribute vec3 aColor; attribute vec3 aExtra; attribute vec3 aCenter;
@@ -32,8 +33,8 @@ class GPUParticles {
           vec4 mv = modelViewMatrix * vec4(p, 1.0); mv.xy += off; gl_Position = projectionMatrix * mv;
           float fade = (1.0 - smoothstep(0.5, 1.0, f)) * smoothstep(0.0, 0.03, f); vColor = vec4(aColor, fade); }`,
       fragmentShader: additive
-        ? `varying vec2 vUv; varying vec4 vColor; void main(){ vec2 d = vUv - 0.5; float r = length(d)*2.0; float a = pow(max(0.0, 1.0 - r), ${sharp ? '0.8' : '2.0'}); gl_FragColor = vec4(vColor.rgb * 2.2, a * vColor.a); }`
-        : `varying vec2 vUv; varying vec4 vColor; void main(){ vec2 d = vUv - 0.5; float r = length(d)*2.0; float a = pow(max(0.0, 1.0 - r), 1.6); gl_FragColor = vec4(vColor.rgb, a * vColor.a * 0.7); }`,
+        ? `uniform vec3 uFxTint; uniform float uFxGain; varying vec2 vUv; varying vec4 vColor; void main(){ vec2 d = vUv - 0.5; float r = length(d)*2.0; float a = pow(max(0.0, 1.0 - r), ${sharp ? '0.8' : '2.0'}); gl_FragColor = vec4(vColor.rgb * uFxTint * uFxGain * 2.2, a * vColor.a); }`
+        : `uniform vec3 uFxTint; uniform float uFxGain; varying vec2 vUv; varying vec4 vColor; void main(){ vec2 d = vUv - 0.5; float r = length(d)*2.0; float a = pow(max(0.0, 1.0 - r), 1.6); gl_FragColor = vec4(vColor.rgb * uFxTint * uFxGain, a * vColor.a * 0.7); }`,
     });
     this.mesh = new THREE.Mesh(g, mat); this.mesh.frustumCulled = false; this.mesh.renderOrder = renderOrder;
   }

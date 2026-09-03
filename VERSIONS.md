@@ -4,6 +4,13 @@ Standalone builds of each version live in `versions/` (double-click to play; nee
 The published artifact keeps its own version picker as well (labels match the entries below).
 The in-game menu shows the version number under the title.
 
+## v3.4.0 — 2026-09-03 — Reliquary, The Coil and Poly styles; GitHub Pages ships the bundle
+- **Reliquary** (from Cosmic Conquest: Reliquary): painted cutscene illustration — three wrap-lit bands whose boundary is jittered per world cell into knife-stroke patchwork, violet-hued shadows, faction-neon rim light (team colour on units, magenta elsewhere), wet posterised specular, paint tooth, ink before bloom, halftone in the shadow bands, canvas grain, chromatic aberration, exposure under 1.
+- **The Coil** (from Cosmic Conquest: The Coil): the night cobalt sibling — desaturated duotone grade, mosaic tiles with dark grout, cyan glows and team-neon rims, strong bloom, heavy vignette, darkening ink.
+- **Poly**: flat-shaded facets from screen-space derivatives on every surface including water, flat colours (textures collapsed to their averages, no normal maps), no outlines, grass tufts off; the world mesh drops to medium detail (subdivision 7, 164k vertices) so the facets read — applied immediately in the menu, or on the next launch in game. Props, units and spots are placed from the same mesh, so nothing floats.
+- New shader ingredients available to every style: paint tooth (world-space value noise), per-cell band jitter, rim light, mosaic tiles, flat facets.
+- GitHub Pages now serves the single-file bundle as the root page (the module dev page moved to `dev.html`), so a deploy can no longer mix cached old modules with a new page — the cause of the "new style cannot be selected" report. The in-game STYLE dropdown moved out of the top bar into its own panel under the planet bar so it cannot overflow off-screen on narrower windows.
+
 ## v3.3.0 — 2026-09-02 — Ink & Steel style
 - Seventh style, requested as a blend: Comic's ink outline pass, fresnel silhouette ink and hatched shadow layers over Beyond All Reason's full-detail textures, strong metallic specular, bright ACES exposure and sharpened clarity, with atmospheric haze pushed past the realism baseline.
 - New edge-pass option `fade`: ink lines dissolve into the haze with distance, so outlines stay crisp on nearby units and thin out on far mountains the way a comic artist would draw atmospheric perspective.
