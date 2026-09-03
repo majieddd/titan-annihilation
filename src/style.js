@@ -124,6 +124,14 @@ export const STYLES = [
       grade: { sat: 1.15, con: 1.12, vig: 0.2, sharp: 0.4, ca: 0, grain: 0.02, poster: 0, paper: 0, shadowTint: V(0.97, 0.98, 1.03), highTint: V(1.02, 1.0, 0.97) } },
   },
   {
+    id: 'inksteel', name: 'Ink & Steel', hint: 'Comic ink lines and hatched shadow layers over bright, sharp, saturated PBR with strong metallic specular; deeper haze, and lines that dissolve into it with distance.',
+    mat: { lod: 0, normal: 1.2, poster: 0, sat: 1.18, bands: 0, soft: 0.06, ambient: 1, spec: 1.4, hatch: 0.45, halftone: 0, outline: 0.4, clay: 0, faction: 0, shadowTint: V(0.88, 0.9, 1.04), litTint: V(1.03, 1.0, 0.96) },
+    light: { sun: 3.9, sunColor: 0xfff6ec, hemi: 0.3, env: 0.85, fill: 0.15, fillColor: 0xa0c0ff },
+    atmo: { aerial: 1.2, sunI: 1.0 },
+    post: { tone: 'aces', exposure: 1.08, gtao: true, bloom: [0.24, 0.45, 0.9], edge: { thick: 2.2, depthT: 0.04, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0, fade: 420 }, halftone: null, tilt: null,
+      grade: { sat: 1.15, con: 1.12, vig: 0.3, sharp: 0.4, ca: 0, grain: 0.03, poster: 0, paper: 0.1, shadowTint: V(0.96, 0.97, 1.03), highTint: V(1.03, 1.0, 0.97) } },
+  },
+  {
     id: 'diorama', name: 'Diorama', hint: 'Original: a war table of painted miniatures — matte clay surfaces, studio key and fill lights, tilt-shift focus, no haze.',
     mat: { lod: 1.2, normal: 0.6, poster: 0, sat: 1.28, bands: 0, soft: 0.06, ambient: 1, spec: 0.45, hatch: 0, halftone: 0, outline: 0.15, clay: 1, faction: 0, shadowTint: V(0.8, 0.82, 0.96), litTint: V(1.04, 1.0, 0.94) },
     light: { sun: 3.6, sunColor: 0xffe6c8, hemi: 0.3, env: 0.7, fill: 0.5, fillColor: 0xa8c8ff },

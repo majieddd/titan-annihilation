@@ -122,7 +122,7 @@ input[type=text]{font-family:inherit;background:rgba(0,0,0,.5);border:1px solid 
     <div id="clock">0:00</div>
     <div id="unitCount"></div>
     <div id="fps"></div>
-    <select id="styleSel" title="Art style: [ and ] cycle"><option value="realism">Polished Realism</option><option value="cel">Cel Shaded</option><option value="spiderverse">Spider-Verse</option><option value="comic">Comic 3D</option><option value="bar">Beyond All Reason</option><option value="diorama">Diorama</option></select>
+    <select id="styleSel" title="Art style: [ and ] cycle"><option value="realism">Polished Realism</option><option value="cel">Cel Shaded</option><option value="spiderverse">Spider-Verse</option><option value="comic">Comic 3D</option><option value="bar">Beyond All Reason</option><option value="inksteel">Ink &amp; Steel</option><option value="diorama">Diorama</option></select>
   </div>
   <div id="planetbar"></div>
   <div id="modeTag"></div>
@@ -146,7 +146,7 @@ input[type=text]{font-family:inherit;background:rgba(0,0,0,.5);border:1px solid 
     <div class="opt"><label>Seed</label><input type="text" id="optSeed" value=""><button id="btnRandom">Randomize</button></div>
     <div class="opt"><label>Planets</label><div class="seg" id="optPlanets"><button data-v="2">2</button><button data-v="3" class="active">3</button><button data-v="4">4</button></div></div>
     <div class="opt"><label>Quality</label><div class="seg" id="optQuality"><button data-v="medium">Medium</button><button data-v="high" class="active">High</button><button data-v="ultra">Ultra</button></div></div>
-    <div class="opt"><label>Style</label><div class="seg" id="optStyle"><button data-v="realism" class="active">Realism</button><button data-v="cel">Cel</button><button data-v="spiderverse">Spider-Verse</button><button data-v="comic">Comic</button><button data-v="bar">BAR</button><button data-v="diorama">Diorama</button></div></div>
+    <div class="opt"><label>Style</label><div class="seg" id="optStyle"><button data-v="realism" class="active">Realism</button><button data-v="cel">Cel</button><button data-v="spiderverse">Spider-Verse</button><button data-v="comic">Comic</button><button data-v="bar">BAR</button><button data-v="inksteel">Ink &amp; Steel</button><button data-v="diorama">Diorama</button></div></div>
     <div id="styleHint"></div>
     <button class="primary" id="launch">LAUNCH</button>
     <div id="help"><b>WASD / drag</b> orbit &nbsp; <b>Wheel</b> zoom (zoom out for the system view) &nbsp; <b>V</b> system view &nbsp; <b>Q/E</b> rotate &nbsp; <b>[ ]</b> art style<br><b>Left click / drag</b> select &nbsp; <b>Right click</b> move / attack (any planet) &nbsp; <b>A</b> attack-move &nbsp; <b>S</b> stop &nbsp; <b>N</b> nuke<br><b>Shift</b> queue / multi-place &nbsp; <b>Ctrl+1-9</b> groups &nbsp; <b>H</b> commander &nbsp; <b>Tab</b> idle fabber &nbsp; <b>P</b> pause<br>Orbital launchers build orbital fabbers that fly between planets. Link two teleporters to march ground armies across the system. Nukes hit any planet; anti-nukes stop them.</div>
@@ -371,7 +371,7 @@ function makePeriodicWorley(seed) {
     out.f1 = Math.sqrt(f1); out.f2 = Math.sqrt(f2); out.id = id; return out;
   };
 }
-const VERSION = '3.2.0';
+const VERSION = '3.3.0';
 function cubicBezier(p0, p1, p2, p3, t, out) {
   const mt = 1 - t; const a = mt * mt * mt, b = 3 * mt * mt * t, c = 3 * mt * t * t, d = t * t * t;
   return out.set(p0.x * a + p1.x * b + p2.x * c + p3.x * d, p0.y * a + p1.y * b + p2.y * c + p3.y * d, p0.z * a + p1.z * b + p2.z * c + p3.z * d);
@@ -834,6 +834,14 @@ const STYLES = [
     atmo: { aerial: 0.3, sunI: 0.85 },
     post: { tone: 'aces', exposure: 1.05, gtao: true, bloom: [0.26, 0.45, 0.9], edge: null, halftone: null, tilt: null,
       grade: { sat: 1.15, con: 1.12, vig: 0.2, sharp: 0.4, ca: 0, grain: 0.02, poster: 0, paper: 0, shadowTint: V(0.97, 0.98, 1.03), highTint: V(1.02, 1.0, 0.97) } },
+  },
+  {
+    id: 'inksteel', name: 'Ink & Steel', hint: 'Comic ink lines and hatched shadow layers over bright, sharp, saturated PBR with strong metallic specular; deeper haze, and lines that dissolve into it with distance.',
+    mat: { lod: 0, normal: 1.2, poster: 0, sat: 1.18, bands: 0, soft: 0.06, ambient: 1, spec: 1.4, hatch: 0.45, halftone: 0, outline: 0.4, clay: 0, faction: 0, shadowTint: V(0.88, 0.9, 1.04), litTint: V(1.03, 1.0, 0.96) },
+    light: { sun: 3.9, sunColor: 0xfff6ec, hemi: 0.3, env: 0.85, fill: 0.15, fillColor: 0xa0c0ff },
+    atmo: { aerial: 1.2, sunI: 1.0 },
+    post: { tone: 'aces', exposure: 1.08, gtao: true, bloom: [0.24, 0.45, 0.9], edge: { thick: 2.2, depthT: 0.04, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0, fade: 420 }, halftone: null, tilt: null,
+      grade: { sat: 1.15, con: 1.12, vig: 0.3, sharp: 0.4, ca: 0, grain: 0.03, poster: 0, paper: 0.1, shadowTint: V(0.96, 0.97, 1.03), highTint: V(1.03, 1.0, 0.97) } },
   },
   {
     id: 'diorama', name: 'Diorama', hint: 'Original: a war table of painted miniatures — matte clay surfaces, studio key and fill lights, tilt-shift focus, no haze.',
@@ -4128,9 +4136,9 @@ camera.layers.enable(1); sun.shadow.camera.layers.enable(1);
 const QUAD_VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
 // ink / outline pass: depth + reconstructed-normal edges from the scene depth texture
 const edgePass = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uNear: { value: 1 }, uFar: { value: 1000 }, uProjInv: { value: new THREE.Matrix4() }, uThick: { value: 1.5 }, uDepthT: { value: 0.05 }, uNormalT: { value: 0.35 }, uStrength: { value: 1 }, uBoil: { value: 0 }, uTime: { value: 0 }, uColor: { value: new THREE.Vector3(0, 0, 0) } },
+  uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uNear: { value: 1 }, uFar: { value: 1000 }, uProjInv: { value: new THREE.Matrix4() }, uThick: { value: 1.5 }, uDepthT: { value: 0.05 }, uNormalT: { value: 0.35 }, uStrength: { value: 1 }, uBoil: { value: 0 }, uFade: { value: 0 }, uTime: { value: 0 }, uColor: { value: new THREE.Vector3(0, 0, 0) } },
   vertexShader: QUAD_VS,
-  fragmentShader: `uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform vec2 uTexel; uniform float uNear, uFar, uThick, uDepthT, uNormalT, uStrength, uBoil, uTime; uniform vec3 uColor; uniform mat4 uProjInv; varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform vec2 uTexel; uniform float uNear, uFar, uThick, uDepthT, uNormalT, uStrength, uBoil, uFade, uTime; uniform vec3 uColor; uniform mat4 uProjInv; varying vec2 vUv;
     float lin(float d) { float z = d * 2.0 - 1.0; return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }
     vec3 vpos(vec2 uv, float d) { vec4 p = uProjInv * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); return p.xyz / p.w; }
     void main(){
@@ -4147,6 +4155,7 @@ const edgePass = new ShaderPass({
       vec3 PL = vpos(uv - vec2(o.x, 0.0), dL); vec3 PD = vpos(uv - vec2(0.0, o.y), dD); vec3 n1 = normalize(cross(P - PL, Py)); vec3 n2 = normalize(cross(Px, P - PD));
       float eN = smoothstep(uNormalT, uNormalT + 0.3, max(1.0 - dot(n0, n1), 1.0 - dot(n0, n2))) * (1.0 - step(0.9999, d0));
       float e = clamp(max(eDepth, eN) * uStrength, 0.0, 1.0);
+      if (uFade > 0.0) e *= exp(-zn / uFade); // ink dissolves into the haze with distance
       gl_FragColor = vec4(mix(col.rgb, uColor, e), col.a); }` });
 edgePass.enabled = false; composer.insertPass(edgePass, 1);
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.3, 0.5, 0.92); composer.addPass(bloom);
@@ -4181,7 +4190,7 @@ app.setStyle = (id) => {
   applyStyleUniforms(st.mat); STYLE_U.uStKey.value = st.light.sun / Math.PI;
   sun.intensity = st.light.sun; sun.color.set(st.light.sunColor); hemi.intensity = st.light.hemi; fill.intensity = st.light.fill; fill.color.set(st.light.fillColor); scene.environmentIntensity = st.light.env;
   const p = st.post; bloom.strength = p.bloom[0]; bloom.radius = p.bloom[1]; bloom.threshold = p.bloom[2];
-  edgePass.enabled = !!p.edge; if (p.edge) { const u = edgePass.uniforms; u.uThick.value = p.edge.thick; u.uDepthT.value = p.edge.depthT; u.uNormalT.value = p.edge.normalT; u.uStrength.value = p.edge.strength; u.uBoil.value = p.edge.boil; u.uColor.value.set(...p.edge.color); }
+  edgePass.enabled = !!p.edge; if (p.edge) { const u = edgePass.uniforms; u.uThick.value = p.edge.thick; u.uDepthT.value = p.edge.depthT; u.uNormalT.value = p.edge.normalT; u.uStrength.value = p.edge.strength; u.uBoil.value = p.edge.boil; u.uFade.value = p.edge.fade || 0; u.uColor.value.set(...p.edge.color); }
   tiltH.enabled = tiltV.enabled = !!p.tilt; if (p.tilt) for (const t of [tiltH, tiltV]) { t.uniforms.uAmount.value = p.tilt.amount; t.uniforms.uFocus.value = p.tilt.focus; t.uniforms.uWidth.value = p.tilt.width; }
   const g = grade.uniforms, gr = p.grade; g.uSat.value = gr.sat; g.uCon.value = gr.con; g.uVig.value = gr.vig; g.uSharp.value = gr.sharp; g.uCA.value = gr.ca; g.uGrain.value = gr.grain; g.uPoster.value = gr.poster; g.uPaper.value = gr.paper; g.uDots.value = p.halftone ? p.halftone.dots : 0; g.uDotSize.value = p.halftone ? p.halftone.size : 6; g.uShadowTint.value.set(...gr.shadowTint); g.uHighTint.value.set(...gr.highTint);
   renderer.toneMapping = TONE[p.tone] || THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = p.exposure;

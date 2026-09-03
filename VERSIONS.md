@@ -4,6 +4,10 @@ Standalone builds of each version live in `versions/` (double-click to play; nee
 The published artifact keeps its own version picker as well (labels match the entries below).
 The in-game menu shows the version number under the title.
 
+## v3.3.0 — 2026-09-02 — Ink & Steel style
+- Seventh style, requested as a blend: Comic's ink outline pass, fresnel silhouette ink and hatched shadow layers over Beyond All Reason's full-detail textures, strong metallic specular, bright ACES exposure and sharpened clarity, with atmospheric haze pushed past the realism baseline.
+- New edge-pass option `fade`: ink lines dissolve into the haze with distance, so outlines stay crisp on nearby units and thin out on far mountains the way a comic artist would draw atmospheric perspective.
+
 ## v3.2.0 — 2026-09-02 — Art style lab: six switchable looks
 - New style system: a style is a data bundle (material uniforms, lighting, atmosphere multipliers, post-processing chain) applied on top of the same world, so switching is instant — from the menu (Style row) or in game with the STYLE dropdown in the top bar and the `[` / `]` keys. The choice is saved with the other settings.
 - **Polished Realism** — the v3.1 photographic baseline with a cohesive film grade (cool shadows / warm highlights, subtle grain).
