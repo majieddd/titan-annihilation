@@ -53,7 +53,9 @@ float stDotPat(vec2 fc, float spacing, float amt) { vec2 p = mat2(0.7071, 0.7071
 export const STYLE_LIGHT_GLSL = `
 {
   vec3 stAlb = max(diffuseColor.rgb, vec3(0.003)); float stAlbL = max(stLum(stAlb), 1e-3);
-  float stDL = clamp(stLum(reflectedLight.directDiffuse) / stAlbL / max(uStKey, 1e-3), 0.0, 1.0);
+  // directDiffuse already carries three's (1 - metalness) factor, so a metallic hull divided by full
+  // albedo read as permanently unlit — every unit sat in the shadow band of the toon styles.
+  float stDL = clamp(stLum(reflectedLight.directDiffuse) / (stAlbL * max(1.0 - metalnessFactor, 1e-3)) / max(uStKey, 1e-3), 0.0, 1.0);
   float stIL = stLum(reflectedLight.indirectDiffuse) / stAlbL;
   vec3 stSpec = reflectedLight.directSpecular + reflectedLight.indirectSpecular;
   vec3 stDbg0 = outgoingLight; vec3 stDbg1 = vec3(0.0); vec3 stDbg2 = vec3(0.0);
@@ -172,7 +174,7 @@ export const STYLES = [
     atmo: { aerial: 0.8, sunI: 0.9 },
     post: { tone: 'aces', exposure: 1.05, gtao: true, bloom: [0.15, 0.5, 0.92], edge: null, halftone: null, tilt: null,
       grade: { sat: 1.12, con: 1.08, vig: 0.3, sharp: 0, ca: 0, grain: 0.02, poster: 0, paper: 0, shadowTint: V(0.96, 0.98, 1.03), highTint: V(1.03, 1.0, 0.97) } },
-    world: { detail: 7, grass: false },
+    world: { detail: 7, grass: false, cards: false },
   },
   {
     id: 'diorama', name: 'Diorama', hint: 'Original: a war table of painted miniatures — matte clay surfaces, studio key and fill lights, tilt-shift focus, no haze.',

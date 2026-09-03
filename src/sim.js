@@ -145,7 +145,9 @@ export class Game {
   }
   orderAttackMove(units, planet, dir, queue = false) { return this.orderMove(units, planet, dir, queue, 'attackmove'); }
   orderAttack(units, target, queue = false) {
+    const tcode = LAYER_CODE[target.def.layer];
     for (const u of units) { if (!u.built || u.dead || !u.def.weapons) continue; if (!this.canReach(u, target.planet)) continue;
+      if (!u.def.weapons.some((w) => w.targets.includes(tcode))) continue; // no weapon can engage that layer
       if (!u.def.mobile) { u.attackTarget = target; u.engage = 'attack'; continue; }
       this.setOrder(u, { type: 'attack', target }, queue); }
   }
@@ -202,6 +204,7 @@ export class Game {
     while (budget-- > 0 && this.pathQueue.length) {
       const u = this.pathQueue.shift(); u.pathPending = false; if (u.dead || !u.moveGoal || u.transit) continue;
       u.path = u.planet.findPath(u.dir, u.moveGoal); u.pathIdx = 0; u.pathGoal = u.moveGoal.clone();
+      if (!u.path && !u.planet.isPassable(u.moveGoal)) this.finishOrder(u); // unreachable: stop, do not swim there
     }
     for (const u of this.units) if (!u.dead) this.updateUnit(u, dt);
     if (this.tick % 90 === 0) for (const u of this.units) { if (!u.dead && !u.built && u.progress <= 0 && u.def.kind !== 'commander' && this.time - u.lastBuildT > 30) this.removeGhost(u); }
@@ -244,7 +247,7 @@ export class Game {
       case 'teleport': {
         const tp = o.tp; if (!tp || tp.dead || !tp.link || tp.link.dead || !tp.link.built || tp.planet !== pl) { this.finishOrder(u); break; }
         u.moveGoal = tp.dir;
-        if (angleBetween(u.dir, tp.dir) * R < tp.def.radius + 2.5) { this.doTeleport(u, tp); this.finishOrder(u); }
+        if (angleBetween(u.dir, tp.dir) * R < tp.def.radius + u.def.radius + 2.5) { this.doTeleport(u, tp); this.finishOrder(u); }
         break;
       }
       case 'move': case 'attackmove': {
@@ -373,7 +376,7 @@ export class Game {
           }
         }
       }
-      if (n.intercepting && t >= 0.9) { n.dead = true; this.fx.explosion(n.pos, 3.2); this.audio.explosion(n.pos, 4); this.emit({ type: 'nukeDestroyed', pos: n.pos.clone(), planet: n.planet }); continue; }
+      if (n.intercepting && t >= 0.9) { n.dead = true; this.fx.explosion(n.pos, 3.2, null, false); this.audio.explosion(n.pos, 4); this.emit({ type: 'nukeDestroyed', pos: n.pos.clone(), planet: n.planet }); continue; }
       if (t >= 1) { this.nukeImpact(n); this.nukes[i] = this.nukes[this.nukes.length - 1]; this.nukes.pop(); }
     }
   }
@@ -513,11 +516,11 @@ export class Game {
     if (u.dead) return; u.dead = true; u.killedBy = attacker;
     const def = u.def; const col = this.teams[u.team].color;
     if (def.kind === 'commander') {
-      this.fx.bigExplosion(u.pos, 1.3); this.audio.explosion(u.pos, 12); this.emit({ type: 'shake', pos: u.pos, amount: 3 });
+      this.fx.bigExplosion(u.pos, 1.3, def.layer === 'ground'); this.audio.explosion(u.pos, 12); this.emit({ type: 'shake', pos: u.pos, amount: 3 });
       for (const t of this.teams) { for (const e of t.units) { if (e === u || e.dead || e.transit) continue; const d = e.pos.distanceTo(u.pos); if (d < 70) this.damage(e, 6000 * (1 - d / 70), u); } }
       this.emit({ type: 'commanderDied', unit: u });
-    } else if (def.isTitan) { this.fx.bigExplosion(u.pos, 0.6); this.audio.explosion(u.pos, 8); this.emit({ type: 'shake', pos: u.pos, amount: 2 }); this.splash(u.pos, 22, 800, u.team, 'g', u); }
-    else if (!u.transit) { const size = def.deathSize * (0.8 + def.radius * 0.25); this.fx.explosion(u.pos, size, col); this.audio.explosion(u.pos, size); }
+    } else if (def.isTitan) { this.fx.bigExplosion(u.pos, 0.6, def.layer === 'ground'); this.audio.explosion(u.pos, 8); this.emit({ type: 'shake', pos: u.pos, amount: 2 }); this.splash(u.pos, 22, 800, u.team, 'g', u); }
+    else if (!u.transit) { const size = def.deathSize * (0.8 + def.radius * 0.25); this.fx.explosion(u.pos, size, col, def.layer === 'ground'); this.audio.explosion(u.pos, size); }
     if (u.spot) { u.spot.taken = null; u.spot = null; }
     if (def.kind === 'structure') u.planet.blockCircle(u.dir, def.radius + 0.6, -1);
     if (def.teleporter) this.unlinkTeleporter(u);
@@ -552,7 +555,7 @@ export class Game {
             done = true; const t = p.target; let hit = false;
             if (t && !t.dead && t.pos.distanceTo(p.pos) < p.splash + t.def.radius + 1.5) { this.damage(t, p.dmg, p.attacker); hit = true; }
             this.splash(p.pos, p.splash, p.dmg * 0.6, p.team, 'g', p.attacker, hit ? t : null);
-            this.fx.explosion(p.pos, p.size > 1.2 ? 1.6 : 0.6); this.audio.explosion(p.pos, p.size > 1.2 ? 1.5 : 0.5); if (p.ground) this.fx.dust(p.pos, _b, 0.6);
+            this.fx.explosion(p.pos, p.size > 1.2 ? 1.6 : 0.6, null, !!p.ground); this.audio.explosion(p.pos, p.size > 1.2 ? 1.5 : 0.5); if (p.ground) this.fx.dust(p.pos, _b, 0.6);
           }
           break;
         }
@@ -561,7 +564,7 @@ export class Game {
           if (t && !t.dead) {
             _a.copy(t.pos).addScaledVector(t.dir, t.def.height * 0.4).sub(p.pos); const d = _a.length();
             if (d < p.speed * dt + 1.0 + t.def.radius * 0.6) {
-              if (p.isInterceptor) { t.dead = true; this.fx.explosion(t.pos, 3.2); this.audio.explosion(t.pos, 4); this.emit({ type: 'nukeDestroyed', pos: t.pos.clone(), planet: t.planet }); }
+              if (p.isInterceptor) { t.dead = true; this.fx.explosion(t.pos, 3.2, null, false); this.audio.explosion(t.pos, 4); this.emit({ type: 'nukeDestroyed', pos: t.pos.clone(), planet: t.planet }); }
               else { this.damage(t, p.dmg, p.attacker); if (p.splash) this.splash(t.pos, p.splash, p.dmg * 0.5, p.team, t.def.layer === 'ground' ? 'g' : 'x', p.attacker, t); this.fx.explosion(t.pos, t.def.layer !== 'ground' ? 0.5 : 0.7); this.audio.explosion(t.pos, 0.6); }
               done = true; break;
             }

@@ -31,7 +31,10 @@ export class GrassField {
           vTint = aInfo.z;`);
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>\nvarying float vTint;')
-        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= mix(vec3(0.42, 0.55, 0.36), vec3(0.72, 0.68, 0.45), vTint);');
+        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= mix(vec3(0.42, 0.55, 0.36), vec3(0.72, 0.68, 0.45), vTint);')
+        // The blades are double-sided cards whose normal is the radial 'up'. three flips the normal on
+        // back faces, which pointed half of them into the ground and left those blades unlit.
+        .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nnormal *= faceDirection; nonPerturbedNormal = normal;');
     };
     if (inject) { inject.sun(mat, planet.uniforms.uSunView, 'grass'); inject.fog(mat, planet.uniforms, 'grass_sun'); }
     this.mesh = new THREE.Mesh(g, mat); this.mesh.frustumCulled = false; this.mesh.receiveShadow = true; this.mesh.castShadow = false; this.mesh.visible = false; this.mesh.renderOrder = 2; this.mesh.layers.set(1);

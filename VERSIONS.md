@@ -4,6 +4,39 @@ Standalone builds of each version live in `versions/` (double-click to play; nee
 The published artifact keeps its own version picker as well (labels match the entries below).
 The in-game menu shows the version number under the title.
 
+## v3.4.1 — 2026-09-03 — Audit pass: 23 verified defects fixed
+A multi-agent review of the whole codebase found 31 candidate defects; 23 survived adversarial verification and are fixed here.
+
+**Rendering**
+- The post-processing chain was never told the display's pixel ratio, so the entire game rendered at CSS resolution and was upscaled. Render resolution is now a real quality setting: Medium 1x, High 1.5x, Ultra the full device ratio. High is 1.5x sharper than before and still holds 60 fps in every style.
+- Per-planet sunlight never worked. The override targeted a line that lives inside a three.js include, and `onBeforeCompile` runs before includes are resolved, so the substitution silently matched nothing and the uniform was optimised away. The light chunk is now inlined with the call site patched, scoped to the key light so each style's fill light keeps its own direction. Planets away from the camera are lit by their own star again.
+- Toon styles divided direct light by the full albedo, ignoring the metalness factor three.js has already applied, so every metallic hull read as permanently in shadow. Units are lit properly in Cel, Comic, Spider-Verse, Reliquary and The Coil.
+- Shadow normal bias was 0.5 world units, which detached every contact shadow from its object; now 0.06.
+- The ink pass sampled the wrong depth buffer. The composer's two targets own separate depth textures and swap parity per frame, so outlines could key off a stale frame.
+- Ambient occlusion re-rendered the entire shadow map a second time every frame.
+- Grass blades are double-sided cards, and three flipped the normal on back faces into the ground, leaving half of every tuft unlit.
+- Bloom is damped in the system view, where the star used to blow out the frame in the heavy-bloom styles.
+
+**World connectivity**
+- Everything in the world is placed by one height function, and it disagreed with the mesh actually drawn: it averaged each vertex with its neighbours, which pulled ridges down and hollows up by as much as 5 units. It now intersects the ray with the triangle being drawn. Mean placement error dropped from 0.14 to 0.002 units at subdivision 8 and from 0.19 to 0.002 at subdivision 7, and it runs slightly faster than the version it replaced.
+- Scorch decals were spawned at the height the unit died, so every aircraft and orbital kill left a black disc hanging in the sky for a minute. Only ground deaths mark the ground.
+- The prop scatter used a hand-rolled estimate of the navigation lattice spacing that was about half the real value, rejecting trees and rocks on ground that is not actually steep, and jittered them only 2.4 units on an 11-unit lattice so the scatter read as a grid.
+- Missiles, bombs and metal-spot pads bypassed the style and atmosphere entirely and stayed brightly lit in the dark styles.
+
+**Simulation**
+- With no route to a destination a unit drove straight at it, across the sea. Unreachable orders are now dropped. A 310-second match ends with no ground unit in the water and no stranded orders.
+- Ground titans could never use a teleporter: the separation radius held them further out than the arrival test allowed.
+- An attack order against something none of the unit's weapons can hit is refused instead of becoming an order that never finishes.
+- A single enemy unit parked near any structure suppressed the AI's attack waves indefinitely, even when nothing could respond.
+
+**Interface and tooling**
+- The in-game style dropdown kept keyboard focus, so its keystrokes drove the camera while every game hotkey was swallowed. It now releases focus, and the camera ignores keys typed into form controls.
+- A selection drag interrupted by the match ending stranded the selection box into the next match.
+- The alert shortcut could aim the camera at a planet belonging to the previous, disposed star system.
+- Effects were dropped without freeing their GPU resources on every world rebuild, which style switching now triggers more often.
+- Returning to the menu left the world marked as played, so the next launch regenerated an identical one.
+- `node build.js` overwrote the already-released archive in `versions/`; cutting a new one takes `--release`.
+
 ## v3.4.0 — 2026-09-03 — Reliquary, The Coil and Poly styles; GitHub Pages ships the bundle
 - **Reliquary** (from Cosmic Conquest: Reliquary): painted cutscene illustration — three wrap-lit bands whose boundary is jittered per world cell into knife-stroke patchwork, violet-hued shadows, faction-neon rim light (team colour on units, magenta elsewhere), wet posterised specular, paint tooth, ink before bloom, halftone in the shadow bands, canvas grain, chromatic aberration, exposure under 1.
 - **The Coil** (from Cosmic Conquest: The Coil): the night cobalt sibling — desaturated duotone grade, mosaic tiles with dark grout, cyan glows and team-neon rims, strong bloom, heavy vignette, darkening ink.

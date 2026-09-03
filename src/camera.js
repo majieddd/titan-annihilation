@@ -135,7 +135,7 @@ export class PlanetCamera {
         if (factor < 1 && this.sysTarget <= 2700) { const pick = this.pickPlanet(e.clientX, e.clientY, _d); const p = pick ? pick.planet : this.system.nearest(this.camera.position); this.focus(p, pick ? pick.dir : null, p.R * 3.5); }
       }
     }, { passive: false });
-    window.addEventListener('keydown', (e) => { if (e.target && (e.target.tagName === 'INPUT')) return; this.keys[keyCode(e)] = true; });
+    window.addEventListener('keydown', (e) => { if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) return; this.keys[keyCode(e)] = true; });
     window.addEventListener('keyup', (e) => { this.keys[keyCode(e)] = false; });
     window.addEventListener('blur', () => { this.keys = {}; this.dragging = false; });
   }

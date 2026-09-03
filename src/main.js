@@ -8,6 +8,7 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { STYLES, STYLE_U, styleById, applyStyleUniforms } from './style.js';
 import { StarSystem } from './system.js';
+import { setPropCards } from './planet.js';
 import { PlanetCamera } from './camera.js';
 import { Game } from './sim.js';
 import { AI } from './ai.js';
@@ -39,7 +40,7 @@ app.renderer = renderer;
 const scene = new THREE.Scene(); app.scene = scene;
 const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 80000);
 const sun = new THREE.DirectionalLight(0xfff1dc, 3.1); sun.castShadow = true;
-sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.5; sun.shadow.camera.near = 100; sun.shadow.camera.far = 1300;
+sun.shadow.bias = -0.00006; sun.shadow.normalBias = 0.06; sun.shadow.camera.near = 100; sun.shadow.camera.far = 1300;
 scene.add(sun); scene.add(sun.target);
 const hemi = new THREE.HemisphereLight(0x8fb4ff, 0x3a2a1a, 0.15); scene.add(hemi);
 const fill = new THREE.DirectionalLight(0xa8c8ff, 0); fill.castShadow = false; scene.add(fill); scene.add(fill.target);
@@ -62,7 +63,7 @@ const renderPass = new RenderPass(scene, camera); composer.addPass(renderPass);
 const gtao = new GTAOPass(scene, camera, 1, 1); gtao.enabled = false; gtao.blendIntensity = 0.7; composer.addPass(gtao);
 // layer 1 = alpha-tested / volumetric surfaces (foliage cards, grass, clouds, sky shell): drawn normally but excluded from the AO depth pass
 camera.layers.enable(1); sun.shadow.camera.layers.enable(1);
-{ const r = gtao.render.bind(gtao); gtao.render = (...a) => { camera.layers.disable(1); r(...a); camera.layers.enable(1); }; }
+{ const r = gtao.render.bind(gtao); gtao.render = (...a) => { camera.layers.disable(1); const sm = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false; r(...a); renderer.shadowMap.autoUpdate = sm; camera.layers.enable(1); }; }
 const QUAD_VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
 // ink / outline pass: depth + reconstructed-normal edges from the scene depth texture
 const edgePass = new ShaderPass({
@@ -119,7 +120,7 @@ app.setStyle = (id) => {
   const st = styleById(id); app.style = st; app.settings.style = st.id; try { localStorage.setItem('ta_settings', JSON.stringify(app.settings)); } catch (e) { }
   applyStyleUniforms(st.mat); STYLE_U.uStKey.value = st.light.sun / Math.PI;
   sun.intensity = st.light.sun; sun.color.set(st.light.sunColor); hemi.intensity = st.light.hemi; fill.intensity = st.light.fill; fill.color.set(st.light.fillColor); scene.environmentIntensity = st.light.env;
-  const p = st.post; bloom.strength = p.bloom[0]; bloom.radius = p.bloom[1]; bloom.threshold = p.bloom[2];
+  const p = st.post; app.bloomBase = p.bloom[0]; bloom.strength = p.bloom[0]; bloom.radius = p.bloom[1]; bloom.threshold = p.bloom[2];
   edgePass.enabled = !!p.edge; if (p.edge) { const u = edgePass.uniforms; u.uThick.value = p.edge.thick; u.uDepthT.value = p.edge.depthT; u.uNormalT.value = p.edge.normalT; u.uStrength.value = p.edge.strength; u.uBoil.value = p.edge.boil; u.uFade.value = p.edge.fade || 0; u.uColor.value.set(...p.edge.color); }
   tiltH.enabled = tiltV.enabled = !!p.tilt; if (p.tilt) for (const t of [tiltH, tiltV]) { t.uniforms.uAmount.value = p.tilt.amount; t.uniforms.uFocus.value = p.tilt.focus; t.uniforms.uWidth.value = p.tilt.width; }
   const g = grade.uniforms, gr = p.grade; g.uSat.value = gr.sat; g.uCon.value = gr.con; g.uVig.value = gr.vig; g.uSharp.value = gr.sharp; g.uCA.value = gr.ca; g.uGrain.value = gr.grain; g.uPoster.value = gr.poster; g.uPaper.value = gr.paper; g.uDots.value = p.halftone ? p.halftone.dots : 0; g.uDotSize.value = p.halftone ? p.halftone.size : 6; g.uShadowTint.value.set(...gr.shadowTint); g.uHighTint.value.set(...gr.highTint);
@@ -129,14 +130,18 @@ app.setStyle = (id) => {
   envT = -1e9; if (app.ui) app.ui.syncStyle();
   // a style that asks for a different world mesh: rebuild now in the menu, otherwise it applies on the next launch
   const wantDetail = (st.world && st.world.detail) || (app.settings.quality === 'medium' ? 7 : 8);
-  if (app.system && app.worldDetail && wantDetail !== app.worldDetail) { if (app.state === 'menu' && !app.generating) app.regenPlanet(); else if (app.ui && app.ui.hint) app.ui.hint('Mesh detail for this style applies on the next launch'); }
+  const wantCards = !(st.world && st.world.cards === false);
+  if (app.system && app.worldDetail && (wantDetail !== app.worldDetail || wantCards !== app.worldCards)) { if (app.state === 'menu' && !app.generating) app.regenPlanet(); else if (app.ui && app.ui.hint) app.ui.hint('Mesh detail for this style applies on the next launch'); }
 };
 app.cycleStyle = (dir) => { const i = STYLES.findIndex((s) => s.id === (app.style ? app.style.id : app.settings.style)); app.setStyle(STYLES[(i + dir + STYLES.length) % STYLES.length].id); };
 
 
 function applyQuality() {
-  const q = app.settings.quality; const dpr = q === 'medium' ? Math.min(devicePixelRatio, 1.25) : (q === 'high' ? Math.min(devicePixelRatio, 2) : devicePixelRatio);
-  renderer.setPixelRatio(dpr); const sm = q === 'medium' ? 2048 : 4096; setTextureSize(q === 'medium' ? 512 : (q === 'high' ? 768 : 1024));
+  // Render resolution. Until v3.4.1 the composer was never told the pixel ratio, so the whole post
+  // chain ran at CSS resolution and was upscaled — the presets below now actually mean something,
+  // and High is capped under the display's ratio to keep a comfortable frame rate at 4x the pixels.
+  const q = app.settings.quality; const dpr = q === 'medium' ? Math.min(devicePixelRatio, 1) : (q === 'high' ? Math.min(devicePixelRatio, 1.5) : devicePixelRatio);
+  renderer.setPixelRatio(dpr); composer.setPixelRatio(dpr); const sm = q === 'medium' ? 2048 : 4096; setTextureSize(q === 'medium' ? 512 : (q === 'high' ? 768 : 1024));
   if (sun.shadow.mapSize.x !== sm) { sun.shadow.mapSize.set(sm, sm); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
   gtao.enabled = q !== 'medium' && !(app.style && app.style.post.gtao === false); resize();
 }
@@ -162,18 +167,20 @@ cam.onSystem = () => { ui.barDirty = true; };
 async function createWorld() {
   app.generating = true; $('loading').classList.remove('hidden');
   if (app.system) { scene.remove(app.system.group); app.system.dispose(); }
+  if (app.fx && app.fx.dispose) app.fx.dispose();
   if (app.fxGroup) scene.remove(app.fxGroup);
   const s = app.settings; const q = s.quality;
   const stWorld = (app.style && app.style.world) || (styleById(app.settings.style).world) || {};
   const detailMain = stWorld.detail || (q === 'medium' ? 7 : 8); app.worldDetail = detailMain;
+  setPropCards(stWorld.cards !== false); app.worldCards = stWorld.cards !== false;
   const system = new StarSystem({ seed: hashString(String(s.seed || 'titan')), biome: s.biome, planetCount: s.planets, quality: q, detailMain, detailOther: Math.min(detailMain, q === 'ultra' ? 7 : 6) });
   await system.generateAsync((msg) => { $('loadingText').textContent = msg.toUpperCase(); }); scene.add(system.group);
   app.system = system; cam.system = system; cam.planet = system.planets[0];
   app.fxGroup = new THREE.Group(); scene.add(app.fxGroup);
-  app.fx = new Effects(app.fxGroup, system); app.fx.setViewport(innerWidth, innerHeight);
+  app.fx = new Effects(app.fxGroup, system, app.atmoU); app.fx.setViewport(innerWidth, innerHeight);
   app.focusPlanet(system.planets[0], null, 780);
-  if (app.style) app.setStyle(app.style.id);
-  app.generating = false; $('loading').classList.add('hidden');
+  app.generating = false; app.worldUsed = false; $('loading').classList.add('hidden');
+  if (app.style) app.setStyle(app.style.id); // after generating clears, so a mesh request made mid-build can still rebuild
 }
 app.focusPlanet = (planet, dir, dist) => { cam.focus(planet, dir, dist); };
 app.regenPlanet = async () => { if (app.generating) return; $('loadingText').textContent = 'FORGING SYSTEM'; applyQuality(); await createWorld(); setupMenuCamera(); };
@@ -244,7 +251,10 @@ function advance(dt, render = true) {
   sun.position.copy(cam.anchor).addScaledVector(_sunDir, 600); sun.target.position.copy(cam.anchor);
   const s = cam.mode === 'system' ? 700 : clamp(cam.dist * 1.15, 45, 700); const sc = sun.shadow.camera; sc.left = -s; sc.right = s; sc.top = s; sc.bottom = -s; sc.updateProjectionMatrix();
   updateEnvironment(performance.now(), false);
-  { const now = performance.now() / 1000; STYLE_U.uStTime.value = now; grade.uniforms.uTime.value = now; edgePass.uniforms.uTime.value = now; edgePass.uniforms.uNear.value = camera.near; edgePass.uniforms.uFar.value = camera.far; edgePass.uniforms.uProjInv.value.copy(camera.projectionMatrixInverse); edgePass.uniforms.tDepth.value = composer.renderTarget2.depthTexture;
+  // The painterly styles run a heavy bloom that reads well on a lit surface but turns the star
+  // into a white blob from orbit, where the sun sprite and its corona fill the frame.
+  bloom.strength = app.bloomBase * (cam.mode === 'system' ? 0.4 : 1);
+  { const now = performance.now() / 1000; STYLE_U.uStTime.value = now; grade.uniforms.uTime.value = now; edgePass.uniforms.uTime.value = now; edgePass.uniforms.uNear.value = camera.near; edgePass.uniforms.uFar.value = camera.far; edgePass.uniforms.uProjInv.value.copy(camera.projectionMatrixInverse); edgePass.uniforms.tDepth.value = composer.readBuffer.depthTexture; // RenderPass draws into readBuffer, and the two targets own separate depth textures
     _fillDir.copy(_sunDir).multiplyScalar(-1).addScaledVector(cam.mode === 'planet' ? cam.normal : _sunDir, 0.9).normalize(); fill.position.copy(cam.anchor).addScaledVector(_fillDir, 600); fill.target.position.copy(cam.anchor); }
   composer.render();
   if (app.state === 'playing' || app.state === 'over') ui.update(dt);

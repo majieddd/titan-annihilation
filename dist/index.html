@@ -373,7 +373,7 @@ function makePeriodicWorley(seed) {
     out.f1 = Math.sqrt(f1); out.f2 = Math.sqrt(f2); out.id = id; return out;
   };
 }
-const VERSION = '3.4.0';
+const VERSION = '3.4.1';
 function cubicBezier(p0, p1, p2, p3, t, out) {
   const mt = 1 - t; const a = mt * mt * mt, b = 3 * mt * mt * t, c = 3 * mt * t * t, d = t * t * t;
   return out.set(p0.x * a + p1.x * b + p2.x * c + p3.x * d, p0.y * a + p1.y * b + p2.y * c + p3.y * d, p0.z * a + p1.z * b + p2.z * c + p3.z * d);
@@ -767,7 +767,9 @@ float stDotPat(vec2 fc, float spacing, float amt) { vec2 p = mat2(0.7071, 0.7071
 const STYLE_LIGHT_GLSL = `
 {
   vec3 stAlb = max(diffuseColor.rgb, vec3(0.003)); float stAlbL = max(stLum(stAlb), 1e-3);
-  float stDL = clamp(stLum(reflectedLight.directDiffuse) / stAlbL / max(uStKey, 1e-3), 0.0, 1.0);
+  // directDiffuse already carries three's (1 - metalness) factor, so a metallic hull divided by full
+  // albedo read as permanently unlit — every unit sat in the shadow band of the toon styles.
+  float stDL = clamp(stLum(reflectedLight.directDiffuse) / (stAlbL * max(1.0 - metalnessFactor, 1e-3)) / max(uStKey, 1e-3), 0.0, 1.0);
   float stIL = stLum(reflectedLight.indirectDiffuse) / stAlbL;
   vec3 stSpec = reflectedLight.directSpecular + reflectedLight.indirectSpecular;
   vec3 stDbg0 = outgoingLight; vec3 stDbg1 = vec3(0.0); vec3 stDbg2 = vec3(0.0);
@@ -886,7 +888,7 @@ const STYLES = [
     atmo: { aerial: 0.8, sunI: 0.9 },
     post: { tone: 'aces', exposure: 1.05, gtao: true, bloom: [0.15, 0.5, 0.92], edge: null, halftone: null, tilt: null,
       grade: { sat: 1.12, con: 1.08, vig: 0.3, sharp: 0, ca: 0, grain: 0.02, poster: 0, paper: 0, shadowTint: V(0.96, 0.98, 1.03), highTint: V(1.03, 1.0, 0.97) } },
-    world: { detail: 7, grass: false },
+    world: { detail: 7, grass: false, cards: false },
   },
   {
     id: 'diorama', name: 'Diorama', hint: 'Original: a war table of painted miniatures — matte clay surfaces, studio key and fill lights, tilt-shift focus, no haze.',
@@ -944,7 +946,10 @@ class GrassField {
           vTint = aInfo.z;`);
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>\nvarying float vTint;')
-        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= mix(vec3(0.42, 0.55, 0.36), vec3(0.72, 0.68, 0.45), vTint);');
+        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= mix(vec3(0.42, 0.55, 0.36), vec3(0.72, 0.68, 0.45), vTint);')
+        // The blades are double-sided cards whose normal is the radial 'up'. three flips the normal on
+        // back faces, which pointed half of them into the ground and left those blades unlit.
+        .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nnormal *= faceDirection; nonPerturbedNormal = normal;');
     };
     if (inject) { inject.sun(mat, planet.uniforms.uSunView, 'grass'); inject.fog(mat, planet.uniforms, 'grass_sun'); }
     this.mesh = new THREE.Mesh(g, mat); this.mesh.frustumCulled = false; this.mesh.receiveShadow = true; this.mesh.castShadow = false; this.mesh.visible = false; this.mesh.renderOrder = 2; this.mesh.layers.set(1);
@@ -983,6 +988,12 @@ const { clamp, lerp, smoothstep, mulberry32, Simplex, MinHeap, angleBetween, tan
 const { detailTexture, cloudTexture, cloudNormalTexture, waterNormalTexture, leafClusterTexture, coniferTexture } = __mod_textures;
 const { getTextureSet } = __mod_assets;
 const { STYLE_U, STYLE_GLSL, STYLE_LIGHT_GLSL } = __mod_style;
+
+/** Foliage build mode. Alpha-textured cards read as photographic foliage, which fights a
+    flat-shaded world, so the Poly style asks for solid faceted trees instead. Set before a
+    world is generated (same pattern as setTextureSize). */
+let PROP_CARDS = true;
+function setPropCards(v) { PROP_CARDS = !!v; }
 const { GrassField } = __mod_foliage;
 
 const BIOMES = {
@@ -1084,7 +1095,18 @@ function injectSun(mat, uSunView, key) {
     if (prev) prev(shader, renderer);
     shader.uniforms.uSunView = uSunView;
     if (!shader.fragmentShader.includes('uniform vec3 uSunView')) shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uSunView;');
-    shader.fragmentShader = shader.fragmentShader.replace('light.direction = directionalLight.direction;', 'light.direction = uSunView;');
+    // Each planet is lit by its own star direction, but the scene holds ONE directional light, so the
+    // shader has to override the direction per material. onBeforeCompile runs BEFORE three resolves
+    // #include directives, so a replace() against a chunk's body silently matches nothing (this is
+    // how it failed until v3.4.1: uSunView was declared, bound and then optimised away as unused).
+    // Inline the chunk here with the call site patched, and only for light 0 — the key light — so the
+    // styles' fill light keeps its own direction. UNROLLED_LOOP_INDEX is three's per-iteration macro.
+    if (shader.fragmentShader.includes('#include <lights_fragment_begin>')) {
+      const body = THREE.ShaderChunk.lights_fragment_begin.replace(
+        'getDirectionalLightInfo( directionalLight, directLight );',
+        'getDirectionalLightInfo( directionalLight, directLight );\n\t\t#if UNROLLED_LOOP_INDEX == 0\n\t\tdirectLight.direction = uSunView;\n\t\t#endif');
+      shader.fragmentShader = shader.fragmentShader.replace('#include <lights_fragment_begin>', body);
+    }
   };
   mat.customProgramCacheKey = () => key + '_sun';
   return mat;
@@ -1369,11 +1391,47 @@ class Planet {
     return e;
   }
   heightAt(d) { return this.heightAtXYZ(d.x, d.y, d.z); }
+  /** Surface radius under a direction: where the ray from the planet centre meets the TRIANGLE
+      that is actually drawn there. Everything in the world is placed with this — props, units,
+      structures, decals, pads, the camera anchor — so it has to agree with the mesh exactly or
+      things float and sink.
+      Two earlier versions were both wrong in ways that showed up on ridges. Blending a vertex
+      with its one-ring neighbours by inverse distance is a smoothing filter: it pulled peaks down
+      and hollows up (measured: mean 0.14, worst 1.6 off the drawn surface at subdivision 8).
+      Evaluating the analytic field instead is exact at the vertices but bulges above the flat
+      triangle between them, which gets worse as the mesh coarsens (worst 3.7 at subdivision 7,
+      the Poly style's mesh).
+      So: take the nearest vertex and the two ring neighbours closest to the query, and intersect
+      the ray with their plane. Exact at the vertices AND across the face, at any detail level,
+      for about the cost of the old blend. Falls back to the analytic field if the fan is
+      degenerate. */
   heightAtXYZ(x, y, z) {
-    const v = this.lookup.nearest(x, y, z); const V = this.rv, H = this.rh, S = this.radjStart, L = this.radjList;
-    let w = 1 / (1e-5 + (1 - (V[v * 3] * x + V[v * 3 + 1] * y + V[v * 3 + 2] * z))); let ws = w, hs = w * H[v];
-    for (let k = S[v], e = S[v + 1]; k < e; k++) { const u = L[k]; w = 1 / (1e-5 + (1 - (V[u * 3] * x + V[u * 3 + 1] * y + V[u * 3 + 2] * z))); ws += w; hs += w * H[u]; }
-    return hs / ws;
+    const V = this.rv, H = this.rh, S = this.radjStart, L = this.radjList;
+    const v0 = this.lookup.nearest(x, y, z);
+    let b1 = -1, b2 = -1, d1 = -2, d2 = -2;
+    for (let k = S[v0], e = S[v0 + 1]; k < e; k++) {
+      const u = L[k]; const d = V[u * 3] * x + V[u * 3 + 1] * y + V[u * 3 + 2] * z;
+      if (d > d1) { d2 = d1; b2 = b1; d1 = d; b1 = u; } else if (d > d2) { d2 = d; b2 = u; }
+    }
+    if (b2 >= 0) {
+      const h0 = H[v0], h1 = H[b1], h2 = H[b2];
+      const ax = V[v0 * 3] * h0, ay = V[v0 * 3 + 1] * h0, az = V[v0 * 3 + 2] * h0;
+      const e1x = V[b1 * 3] * h1 - ax, e1y = V[b1 * 3 + 1] * h1 - ay, e1z = V[b1 * 3 + 2] * h1 - az;
+      const e2x = V[b2 * 3] * h2 - ax, e2y = V[b2 * 3 + 1] * h2 - ay, e2z = V[b2 * 3 + 2] * h2 - az;
+      const nx = e1y * e2z - e1z * e2y, ny = e1z * e2x - e1x * e2z, nz = e1x * e2y - e1y * e2x;
+      const den = nx * x + ny * y + nz * z;
+      // Reject a degenerate fan: if the two neighbours are nearly collinear with the query the
+      // plane is edge-on to the ray and the intersection runs away (one sample in ~500 landed a
+      // hundred units underground before this guard). Demand the face be no more than ~78 deg
+      // from the ray, and the answer stay within a few edge lengths of the vertex it came from.
+      const nlen2 = nx * nx + ny * ny + nz * nz;
+      if (den * den > 0.04 * nlen2) {
+        const t = (nx * ax + ny * ay + nz * az) / den;
+        const dh = t - h0; const e1l2 = e1x * e1x + e1y * e1y + e1z * e1z, e2l2 = e2x * e2x + e2y * e2y + e2z * e2z;
+        if (dh * dh < 16 * (e1l2 > e2l2 ? e1l2 : e2l2)) return t;
+      }
+    }
+    return this.R + this.elev(x, y, z);
   }
   aoAtXYZ(x, y, z) {
     const nav = this.nav; const v = nav.lookup.nearest(x, y, z); const V = nav.verts;
@@ -1530,11 +1588,16 @@ class Planet {
       const cross = new THREE.BufferGeometry(); { const pos = [], uv = [], nrm = []; const hw = 1.35, y0 = 0.25, y1 = 5.6; for (let i = 0; i < 3; i++) { const a = i * Math.PI / 3; const dx = Math.cos(a) * hw, dz = Math.sin(a) * hw; const q = [[-dx, y0, -dz, 0, 0], [dx, y0, dz, 0.5, 0], [dx, y1, dz, 0.5, 1], [-dx, y0, -dz, 0, 0], [dx, y1, dz, 0.5, 1], [-dx, y1, -dz, 0, 1]]; for (const [x, y, z, u, v] of q) { pos.push(x, y, z); uv.push(u, v); const nn = new THREE.Vector3(x * 0.5, 0.85, z * 0.5).normalize(); nrm.push(nn.x, nn.y, nn.z); } }
         { const hw2 = 1.45, yt = 2.6; const q = [[-hw2, yt, -hw2, 0.5, 0], [hw2, yt, -hw2, 1, 0], [hw2, yt, hw2, 1, 1], [-hw2, yt, -hw2, 0.5, 0], [hw2, yt, hw2, 1, 1], [-hw2, yt, hw2, 0.5, 1]]; for (const [x, y, z, u, v] of q) { pos.push(x, y, z); uv.push(u, v); nrm.push(0, 1, 0); } } cross.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); cross.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); cross.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); }
       const forest = (d) => this.noise.fbm(d.x * 5 + 3, d.y * 5, d.z * 5, 3);
-      kinds.push({ geo: trunk, canopy: cross, canopyTex: 'conifer', bark: true, count: Math.round(4200 * area), tries: 60, test: (e, s, d) => e > 1.6 && e < 13 && s < 0.4 && forest(d) > 0.04, scale: [0.7, 1.6], stretch: 1, tree: true });
+      const coneTree = () => { const c1 = colorize(new THREE.ConeGeometry(1.15, 2.2, 6).toNonIndexed(), [0.1, 0.3, 0.12]); c1.deleteAttribute('uv'); c1.translate(0, 2.0, 0);
+        const c2 = colorize(new THREE.ConeGeometry(0.9, 2.0, 6).toNonIndexed(), [0.13, 0.36, 0.14]); c2.deleteAttribute('uv'); c2.translate(0, 3.1, 0);
+        const c3 = colorize(new THREE.ConeGeometry(0.6, 1.7, 6).toNonIndexed(), [0.16, 0.42, 0.16]); c3.deleteAttribute('uv'); c3.translate(0, 4.2, 0);
+        return mergeGeometries([trunk.clone(), c1, c2, c3], false); };
+      kinds.push(PROP_CARDS ? { geo: trunk, canopy: cross, canopyTex: 'conifer', bark: true, count: Math.round(4200 * area), tries: 60, test: (e, s, d) => e > 1.6 && e < 13 && s < 0.4 && forest(d) > 0.04, scale: [0.7, 1.6], stretch: 1, tree: true } : { geo: coneTree(), count: Math.round(4200 * area), tries: 60, test: (e, s, d) => e > 1.6 && e < 13 && s < 0.4 && forest(d) > 0.04, scale: [0.7, 1.6], stretch: 1, tree: true });
       const trunk2 = colorize(new THREE.CylinderGeometry(0.16, 0.3, 2.6, 7).toNonIndexed(), [0.3, 0.2, 0.12]); trunk2.deleteAttribute('uv'); trunk2.translate(0, 1.3, 0);
       const branches = []; for (let i = 0; i < 4; i++) { const br = colorize(new THREE.CylinderGeometry(0.06, 0.12, 1.6, 5).toNonIndexed(), [0.28, 0.19, 0.11]); br.deleteAttribute('uv'); br.translate(0, 0.8, 0); br.rotateZ(0.7 + rng() * 0.5); br.rotateY(i * Math.PI / 2 + rng() * 0.6); br.translate(0, 2.2 + rng() * 0.5, 0); branches.push(br); }
       const cards = new THREE.BufferGeometry(); { const pos = [], uv = [], nrm = []; for (let i = 0; i < 14; i++) { const cx = (rng() - 0.5) * 1.5, cy = 3.2 + (rng() - 0.5) * 1.3, cz = (rng() - 0.5) * 1.5; const sz = 1.3 + rng() * 0.7; const ax = rng() * Math.PI, ay = rng() * Math.PI * 2; const u = new THREE.Vector3(Math.cos(ay), 0, Math.sin(ay)); const vv = new THREE.Vector3(0, Math.cos(ax), Math.sin(ax)); const nn = new THREE.Vector3(cx, cy - 3.1 + 0.8, cz).normalize(); const corners = [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]]; for (const [a, b2] of corners) { pos.push(cx + (u.x * a + vv.x * b2) * sz / 2, cy + (u.y * a + vv.y * b2) * sz / 2, cz + (u.z * a + vv.z * b2) * sz / 2); uv.push(a * 0.5 + 0.5, b2 * 0.5 + 0.5); nrm.push(nn.x, nn.y, nn.z); } } cards.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); cards.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); cards.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); }
-      kinds.push({ geo: mergeGeometries([trunk2, ...branches], false), canopy: cards, bark: true, count: Math.round(2600 * area), tries: 40, test: (e, s, d) => e > 1.4 && e < 10 && s < 0.3 && forest(d) > -0.04, scale: [0.8, 1.5], stretch: 1, tree: true });
+      const blobCanopy = () => { const cn = colorize(jitter(new THREE.IcosahedronGeometry(1.5, 1).toNonIndexed(), 0.5), [0.18, 0.4, 0.14]); cn.deleteAttribute('uv'); cn.translate(0, 3.2, 0); return mergeGeometries([trunk2.clone(), cn], false); };
+      kinds.push(PROP_CARDS ? { geo: mergeGeometries([trunk2, ...branches], false), canopy: cards, bark: true, count: Math.round(2600 * area), tries: 40, test: (e, s, d) => e > 1.4 && e < 10 && s < 0.3 && forest(d) > -0.04, scale: [0.8, 1.5], stretch: 1, tree: true } : { geo: blobCanopy(), count: Math.round(2600 * area), tries: 40, test: (e, s, d) => e > 1.4 && e < 10 && s < 0.3 && forest(d) > -0.04, scale: [0.8, 1.5], stretch: 1, tree: true });
       const bush = colorize(jitter(new THREE.IcosahedronGeometry(0.8, 1).toNonIndexed(), 0.3), [0.2, 0.38, 0.13]); bush.deleteAttribute('uv'); bush.translate(0, 0.45, 0);
       kinds.push({ geo: bush, count: Math.round(2400 * area), test: (e, s) => e > 1.2 && e < 11 && s < 0.45, scale: [0.6, 1.4], stretch: 0.8, tree: true });
       kinds.push({ geo: rockGeo(), count: Math.round(1200 * area), test: (e, s) => e > 1.0 && (s > 0.25 || rng() < 0.2), scale: [0.6, 3.2], stretch: 0.7, stone: true });
@@ -1567,11 +1630,12 @@ class Planet {
       while (n < k.count && tries++ < k.count * (k.tries || 8)) {
         const i = Math.floor(rng() * nav.count); this.nodeDir(i, dir);
         const e = this.navElev[i]; let slope = 0;
-        const spacing = 2 * Math.PI * R / 10242 * 32; for (let q = nav.adjStart[i], qe = nav.adjStart[i + 1]; q < qe; q++) { const u = nav.adjList[q]; slope = Math.max(slope, Math.abs(this.navElev[u] - e) / spacing); }
+        const nx = nav.verts[i * 3], ny = nav.verts[i * 3 + 1], nz = nav.verts[i * 3 + 2];
+        for (let q = nav.adjStart[i], qe = nav.adjStart[i + 1]; q < qe; q++) { const u = nav.adjList[q]; const dx = nav.verts[u * 3] - nx, dy = nav.verts[u * 3 + 1] - ny, dz = nav.verts[u * 3 + 2] - nz; const sp = Math.sqrt(dx * dx + dy * dy + dz * dz) * R; slope = Math.max(slope, Math.abs(this.navElev[u] - e) / sp); }
         if (!k.test(e, slope, dir)) continue;
         let bad = false; for (const s of this.spots) if (s.dir.dot(dir) > cosSpot) { bad = true; break; } if (bad) continue;
         for (const sp of this.spawns) if (sp.dir.dot(dir) > cosSpawn) { bad = true; break; } if (bad) continue;
-        rotateTangent(dir, anyTangent(dir, _v1), rng() * TAU, tan); moveOnSphere(dir, tan, (rng() * 2.4) / R, dir);
+        rotateTangent(dir, anyTangent(dir, _v1), rng() * TAU, tan); moveOnSphere(dir, tan, (rng() * 5.5) / R, dir);
         const h = this.heightAt(dir); pos.copy(dir).multiplyScalar(h - 0.15);
         rotateTangent(dir, anyTangent(dir, _v1), rng() * TAU, tan); frameQuat(dir, tan, _q);
         const sc = k.scale[0] + rng() * (k.scale[1] - k.scale[0]); _s.set(sc, sc * (k.stretch + rng() * 0.4), sc); _m.compose(pos, _q, _s); mesh.setMatrixAt(n, _m); if (canopyMesh) canopyMesh.setMatrixAt(n, _m);
@@ -1601,7 +1665,7 @@ class Planet {
   dispose() { this.group.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material && !o.material.userData.shared) o.material.dispose(); }); }
 }
 
-return { BIOMES, buildIcosphere, injectSun, ATMO_GLSL, atmoUniformsOf, injectFog, Planet };
+return { setPropCards, BIOMES, buildIcosphere, injectSun, ATMO_GLSL, atmoUniformsOf, injectFog, Planet };
 })();
 
 // ===== system.js =====
@@ -2230,6 +2294,7 @@ return { buildModel, makeUnitMaterial, UnitRenderer };
 const __mod_effects = (() => {
 
 const { STYLE_U } = __mod_style;
+const { injectFog } = __mod_planet;
 const { frameQuat, anyTangent, clamp, lerp } = __mod_util;
 
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
@@ -2380,8 +2445,9 @@ function makeScorchTexture() {
 }
 
 class Effects {
-  constructor(scene, system) {
-    this.scene = scene; this.system = system; this.planets = system.planets; this.time = 0;
+  constructor(scene, system, atmoU) {
+    this.scene = scene; this.system = system; this.planets = system.planets; this.time = 0; this.atmoU = atmoU;
+    const lit = (m, key) => (atmoU ? injectFog(m, atmoU, key) : m); // share the world's atmosphere and art style
     const cf = (x, y, z) => this.centerFor(x, y, z);
     this.sparks = new GPUParticles(30000, { additive: true }); this.glow = new GPUParticles(2500, { additive: true, renderOrder: 21 }); this.smoke = new GPUParticles(20000, { additive: false, renderOrder: 18 });
     this.sparks.centerFor = cf; this.glow.centerFor = cf; this.smoke.centerFor = cf;
@@ -2391,8 +2457,8 @@ class Effects {
     this.rings = new InstPool(new THREE.RingGeometry(0.72, 1, 48).rotateX(-Math.PI / 2), addMat({ side: THREE.DoubleSide }), 120, { renderOrder: 22 }); this.ringList = [];
     this.bolts = new InstPool(new THREE.BoxGeometry(0.24, 0.24, 1), addMat(), 800, { renderOrder: 22 });
     this.shells = new InstPool(new THREE.SphereGeometry(0.42, 8, 6), addMat(), 500, { renderOrder: 22 });
-    this.missiles = new InstPool(new THREE.ConeGeometry(0.28, 1.2, 6).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xdde3ea, roughness: 0.4, metalness: 0.5 }), 400, { shadow: false });
-    this.bombs = new InstPool(new THREE.SphereGeometry(0.45, 8, 6), new THREE.MeshStandardMaterial({ color: 0x333940, roughness: 0.6 }), 200, { color: false });
+    this.missiles = new InstPool(new THREE.ConeGeometry(0.28, 1.2, 6).rotateX(Math.PI / 2), lit(new THREE.MeshStandardMaterial({ color: 0xdde3ea, roughness: 0.4, metalness: 0.5 }), 'fx_missile'), 400, { shadow: false });
+    this.bombs = new InstPool(new THREE.SphereGeometry(0.45, 8, 6), lit(new THREE.MeshStandardMaterial({ color: 0x333940, roughness: 0.6 }), 'fx_bomb'), 200, { color: false });
     this.selRings = new InstPool(new THREE.RingGeometry(0.8, 1, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }), 500, { renderOrder: 12 });
     this.rangeRings = new InstPool(new THREE.RingGeometry(0.985, 1, 96).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide, depthTest: false }), 60, { renderOrder: 13 });
     const dg = new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2);
@@ -2418,7 +2484,7 @@ class Effects {
   upAt(p, out) { const c = this.centerFor(p.x, p.y, p.z); return out.copy(p).sub(c).normalize(); }
   buildSpotPads() {
     let n = 0; for (const p of this.planets) n += p.spots.length;
-    const pad = new THREE.InstancedMesh(new THREE.CylinderGeometry(2.3, 2.6, 0.5, 6), new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.7, metalness: 0.5 }), n);
+    const pad = new THREE.InstancedMesh(new THREE.CylinderGeometry(2.3, 2.6, 0.5, 6), this.atmoU ? injectFog(new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.7, metalness: 0.5 }), this.atmoU, 'fx_pad') : new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.7, metalness: 0.5 }), n);
     const ring = new THREE.InstancedMesh(new THREE.TorusGeometry(1.7, 0.12, 6, 24).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.25, 0.9, 1.2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), n);
     pad.receiveShadow = true; pad.castShadow = true; let i = 0;
     for (const p of this.planets) for (const s of p.spots) {
@@ -2428,6 +2494,14 @@ class Effects {
     this.spotPads = pad; this.spotRings = ring; this.scene.add(pad, ring);
   }
   setViewport(w, h) { this.icons.uniforms.uRes.value.set(w, h); this.bars.uniforms.uRes.value.set(w, h); }
+  /** Free every GPU resource. A world rebuild drops the whole Effects instance, and switching art
+      styles can rebuild the world repeatedly, so without this each switch leaked its geometries,
+      materials and canvas textures. */
+  dispose() {
+    const kill = (m) => { if (!m) return; if (m.geometry) m.geometry.dispose(); const mats = Array.isArray(m.material) ? m.material : [m.material]; for (const mat of mats) { if (!mat) continue; for (const k of ['map', 'alphaMap', 'normalMap']) if (mat[k] && mat[k].dispose) mat[k].dispose(); if (mat.uniforms) for (const u of Object.values(mat.uniforms)) { const v = u && u.value; if (v && v.isTexture && v.dispose) v.dispose(); } mat.dispose(); } if (m.parent) m.parent.remove(m); };
+    for (const p of [this.sparks, this.glow, this.smoke, this.beams, this.rings, this.bolts, this.shells, this.missiles, this.bombs, this.selRings, this.rangeRings, this.decals, this.icons, this.bars]) kill(p && p.mesh);
+    kill(this.spotPads); kill(this.spotRings);
+  }
   // ---- spawners ----
   sparkBurst(p, n, count, speed, life, size, col, opts = {}) {
     for (let i = 0; i < count; i++) {
@@ -2442,7 +2516,7 @@ class Effects {
     }
   }
   flash(p, size, col, life = 0.22) { this.glow.spawn(p.x, p.y, p.z, 0, 0, 0, life, size, col[0], col[1], col[2], 0, 0, 0.8, 0); }
-  explosion(p, size, teamCol) {
+  explosion(p, size, teamCol, ground = true) {
     const n = this.upAt(p, _n);
     this.flash(p, 3.2 * size, [1, 0.9, 0.7], 0.16 + 0.04 * size); this.flash(p, 1.6 * size, [1, 0.6, 0.25], 0.4);
     this.sparkBurst(p, n, Math.round(18 * size), 14 * Math.sqrt(size), 0.9, 0.9 * Math.sqrt(size), [1.0, 0.7, 0.3]);
@@ -2451,9 +2525,9 @@ class Effects {
     this.smokePuff(p, n, Math.round(6 * size), 18 * Math.sqrt(size), 1.6, 0.35 * Math.sqrt(size), [0.12, 0.12, 0.13], { grav: 45, drag: 0.4, grow: 0, up: 1.2 });
     if (teamCol) this.sparkBurst(p, n, Math.round(6 * size), 10 * Math.sqrt(size), 1.0, 0.5, teamCol);
     if (size >= 1.4) this.ring(p, n, [1.0, 0.75, 0.45], 9 * size, 0.55);
-    if (size >= 0.9) this.scorch(p, n, 2.2 * size);
+    if (ground && size >= 0.9) this.scorch(p, n, 2.2 * size);
   }
-  bigExplosion(p, size) {
+  bigExplosion(p, size, ground = true) {
     const n = this.upAt(p, _n);
     this.flash(p, 12 * size, [1, 0.95, 0.85], 0.35); this.flash(p, 7 * size, [1, 0.6, 0.2], 0.9);
     this.sparkBurst(p, n, 200 * size, 40 * size, 2.0, 1.1, [1.0, 0.7, 0.3], { grav: 25, drag: 1.2 });
@@ -2461,7 +2535,7 @@ class Effects {
     this.smokePuff(p, n, 90 * size, 18 * size, 6, 7 * size, [0.2, 0.18, 0.17], { grav: -3 });
     this.smokePuff(p, n, 40 * size, 50 * size, 3, 1.0, [0.12, 0.12, 0.13], { grav: 50, drag: 0.3, grow: 0, up: 1.5 });
     this.ring(p, n, [0.8, 0.6, 0.35], 60 * size, 1.4); this.ring(p, n, [0.35, 0.5, 0.7], 100 * size, 2.2);
-    this.scorch(p, n, 16 * size);
+    if (ground) this.scorch(p, n, 16 * size);
   }
   nuke(p, n) {
     this.flash(p, 55, [1, 0.98, 0.9], 0.5); this.flash(p, 30, [1, 0.6, 0.2], 2.0); this.flash(p, 18, [1, 0.35, 0.1], 4);
@@ -2763,7 +2837,9 @@ class Game {
   }
   orderAttackMove(units, planet, dir, queue = false) { return this.orderMove(units, planet, dir, queue, 'attackmove'); }
   orderAttack(units, target, queue = false) {
+    const tcode = LAYER_CODE[target.def.layer];
     for (const u of units) { if (!u.built || u.dead || !u.def.weapons) continue; if (!this.canReach(u, target.planet)) continue;
+      if (!u.def.weapons.some((w) => w.targets.includes(tcode))) continue; // no weapon can engage that layer
       if (!u.def.mobile) { u.attackTarget = target; u.engage = 'attack'; continue; }
       this.setOrder(u, { type: 'attack', target }, queue); }
   }
@@ -2820,6 +2896,7 @@ class Game {
     while (budget-- > 0 && this.pathQueue.length) {
       const u = this.pathQueue.shift(); u.pathPending = false; if (u.dead || !u.moveGoal || u.transit) continue;
       u.path = u.planet.findPath(u.dir, u.moveGoal); u.pathIdx = 0; u.pathGoal = u.moveGoal.clone();
+      if (!u.path && !u.planet.isPassable(u.moveGoal)) this.finishOrder(u); // unreachable: stop, do not swim there
     }
     for (const u of this.units) if (!u.dead) this.updateUnit(u, dt);
     if (this.tick % 90 === 0) for (const u of this.units) { if (!u.dead && !u.built && u.progress <= 0 && u.def.kind !== 'commander' && this.time - u.lastBuildT > 30) this.removeGhost(u); }
@@ -2862,7 +2939,7 @@ class Game {
       case 'teleport': {
         const tp = o.tp; if (!tp || tp.dead || !tp.link || tp.link.dead || !tp.link.built || tp.planet !== pl) { this.finishOrder(u); break; }
         u.moveGoal = tp.dir;
-        if (angleBetween(u.dir, tp.dir) * R < tp.def.radius + 2.5) { this.doTeleport(u, tp); this.finishOrder(u); }
+        if (angleBetween(u.dir, tp.dir) * R < tp.def.radius + u.def.radius + 2.5) { this.doTeleport(u, tp); this.finishOrder(u); }
         break;
       }
       case 'move': case 'attackmove': {
@@ -2991,7 +3068,7 @@ class Game {
           }
         }
       }
-      if (n.intercepting && t >= 0.9) { n.dead = true; this.fx.explosion(n.pos, 3.2); this.audio.explosion(n.pos, 4); this.emit({ type: 'nukeDestroyed', pos: n.pos.clone(), planet: n.planet }); continue; }
+      if (n.intercepting && t >= 0.9) { n.dead = true; this.fx.explosion(n.pos, 3.2, null, false); this.audio.explosion(n.pos, 4); this.emit({ type: 'nukeDestroyed', pos: n.pos.clone(), planet: n.planet }); continue; }
       if (t >= 1) { this.nukeImpact(n); this.nukes[i] = this.nukes[this.nukes.length - 1]; this.nukes.pop(); }
     }
   }
@@ -3131,11 +3208,11 @@ class Game {
     if (u.dead) return; u.dead = true; u.killedBy = attacker;
     const def = u.def; const col = this.teams[u.team].color;
     if (def.kind === 'commander') {
-      this.fx.bigExplosion(u.pos, 1.3); this.audio.explosion(u.pos, 12); this.emit({ type: 'shake', pos: u.pos, amount: 3 });
+      this.fx.bigExplosion(u.pos, 1.3, def.layer === 'ground'); this.audio.explosion(u.pos, 12); this.emit({ type: 'shake', pos: u.pos, amount: 3 });
       for (const t of this.teams) { for (const e of t.units) { if (e === u || e.dead || e.transit) continue; const d = e.pos.distanceTo(u.pos); if (d < 70) this.damage(e, 6000 * (1 - d / 70), u); } }
       this.emit({ type: 'commanderDied', unit: u });
-    } else if (def.isTitan) { this.fx.bigExplosion(u.pos, 0.6); this.audio.explosion(u.pos, 8); this.emit({ type: 'shake', pos: u.pos, amount: 2 }); this.splash(u.pos, 22, 800, u.team, 'g', u); }
-    else if (!u.transit) { const size = def.deathSize * (0.8 + def.radius * 0.25); this.fx.explosion(u.pos, size, col); this.audio.explosion(u.pos, size); }
+    } else if (def.isTitan) { this.fx.bigExplosion(u.pos, 0.6, def.layer === 'ground'); this.audio.explosion(u.pos, 8); this.emit({ type: 'shake', pos: u.pos, amount: 2 }); this.splash(u.pos, 22, 800, u.team, 'g', u); }
+    else if (!u.transit) { const size = def.deathSize * (0.8 + def.radius * 0.25); this.fx.explosion(u.pos, size, col, def.layer === 'ground'); this.audio.explosion(u.pos, size); }
     if (u.spot) { u.spot.taken = null; u.spot = null; }
     if (def.kind === 'structure') u.planet.blockCircle(u.dir, def.radius + 0.6, -1);
     if (def.teleporter) this.unlinkTeleporter(u);
@@ -3170,7 +3247,7 @@ class Game {
             done = true; const t = p.target; let hit = false;
             if (t && !t.dead && t.pos.distanceTo(p.pos) < p.splash + t.def.radius + 1.5) { this.damage(t, p.dmg, p.attacker); hit = true; }
             this.splash(p.pos, p.splash, p.dmg * 0.6, p.team, 'g', p.attacker, hit ? t : null);
-            this.fx.explosion(p.pos, p.size > 1.2 ? 1.6 : 0.6); this.audio.explosion(p.pos, p.size > 1.2 ? 1.5 : 0.5); if (p.ground) this.fx.dust(p.pos, _b, 0.6);
+            this.fx.explosion(p.pos, p.size > 1.2 ? 1.6 : 0.6, null, !!p.ground); this.audio.explosion(p.pos, p.size > 1.2 ? 1.5 : 0.5); if (p.ground) this.fx.dust(p.pos, _b, 0.6);
           }
           break;
         }
@@ -3179,7 +3256,7 @@ class Game {
           if (t && !t.dead) {
             _a.copy(t.pos).addScaledVector(t.dir, t.def.height * 0.4).sub(p.pos); const d = _a.length();
             if (d < p.speed * dt + 1.0 + t.def.radius * 0.6) {
-              if (p.isInterceptor) { t.dead = true; this.fx.explosion(t.pos, 3.2); this.audio.explosion(t.pos, 4); this.emit({ type: 'nukeDestroyed', pos: t.pos.clone(), planet: t.planet }); }
+              if (p.isInterceptor) { t.dead = true; this.fx.explosion(t.pos, 3.2, null, false); this.audio.explosion(t.pos, 4); this.emit({ type: 'nukeDestroyed', pos: t.pos.clone(), planet: t.planet }); }
               else { this.damage(t, p.dmg, p.attacker); if (p.splash) this.splash(t.pos, p.splash, p.dmg * 0.5, p.team, t.def.layer === 'ground' ? 'g' : 'x', p.attacker, t); this.fx.explosion(t.pos, t.def.layer !== 'ground' ? 0.5 : 0.7); this.audio.explosion(t.pos, 0.6); }
               done = true; break;
             }
@@ -3589,9 +3666,8 @@ class AI {
       if (c.commander && c.commander.planet === e.planet) { const d = e.pos.distanceTo(c.commander.pos); if (d < 90 && d < td) { td = d; threat = e; } }
     }
     if (!threat) return;
-    this.lastThreat = t;
     const responders = c.ground.filter((u) => u.drop <= 0 && (!u.orders.length || (u.ai && u.ai.role === 'defend' && t - u.ai.t > 12)) && g.canReach(u, threat.planet) && (u.planet !== threat.planet || u.pos.distanceTo(threat.pos) < 260));
-    if (responders.length) { g.orderAttackMove(responders, threat.planet, threat.dir, false); for (const u of responders) u.ai = { role: 'defend', t }; }
+    if (responders.length) { this.lastThreat = t; g.orderAttackMove(responders, threat.planet, threat.dir, false); for (const u of responders) u.ai = { role: 'defend', t }; }
     if (threat.def.layer === 'air') { const f = c.fighters.filter((u) => !u.orders.length && u.planet === threat.planet); if (f.length) g.orderAttackMove(f, threat.planet, threat.dir, false); }
     if (this.wave && threat.planet === this.home && td < 50 && this.value(responders) < this.value(this.wave.units) * 0.3 && this.centroid(this.wave.units, _t).distanceTo(this.home.center) < this.home.R + 40 && angleBetween(_t.clone().sub(this.home.center).normalize(), this.base) * this.home.R > 150) {
       g.orderAttackMove(this.wave.units, threat.planet, threat.dir, false); this.wave = null;
@@ -3741,7 +3817,7 @@ class PlanetCamera {
         if (factor < 1 && this.sysTarget <= 2700) { const pick = this.pickPlanet(e.clientX, e.clientY, _d); const p = pick ? pick.planet : this.system.nearest(this.camera.position); this.focus(p, pick ? pick.dir : null, p.R * 3.5); }
       }
     }, { passive: false });
-    window.addEventListener('keydown', (e) => { if (e.target && (e.target.tagName === 'INPUT')) return; this.keys[keyCode(e)] = true; });
+    window.addEventListener('keydown', (e) => { if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) return; this.keys[keyCode(e)] = true; });
     window.addEventListener('keyup', (e) => { this.keys[keyCode(e)] = false; });
     window.addEventListener('blur', () => { this.keys = {}; this.dragging = false; });
   }
@@ -3778,7 +3854,7 @@ class UI {
       if (this.boxing) { const b = $('selbox'); const x = Math.min(e.clientX, this.boxStart.x), y = Math.min(e.clientY, this.boxStart.y); b.style.left = x + 'px'; b.style.top = y + 'px'; b.style.width = Math.abs(e.clientX - this.boxStart.x) + 'px'; b.style.height = Math.abs(e.clientY - this.boxStart.y) + 'px'; }
     });
     window.addEventListener('mouseup', (e) => {
-      if (this.app.state !== 'playing') return;
+      if (this.app.state !== 'playing') { this.boxStart = null; this.boxing = false; $('selbox').classList.add('hidden'); return; }
       if (e.button === 0) {
         const onCanvas = e.target === canvas;
         if (this.placing) { if (onCanvas) this.place(e.shiftKey); }
@@ -3826,6 +3902,8 @@ class UI {
     $('launch').addEventListener('click', () => { this.readSettings(); this.app.startGame(); });
     $('optStyle').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { $('optStyle').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b)); this.app.setStyle(b.dataset.v); }));
     $('styleSel').addEventListener('change', (e) => { this.app.setStyle(e.target.value); e.target.blur(); });
+    $('styleSel').addEventListener('keydown', (e) => { if (e.key === 'Escape' || e.key === 'Enter') e.target.blur(); });
+    $('styleSel').addEventListener('blur', () => { this.cam.keys = {}; });
   }
   readSettings() {
     const s = this.app.settings;
@@ -4102,7 +4180,7 @@ class UI {
     if (sound) this.app.audio.alert(cls === 'bad');
   }
   updateAlerts(dt) { for (let i = this.alerts.length - 1; i >= 0; i--) { const a = this.alerts[i]; a.t -= dt; if (a.t <= 0) { a.el.remove(); this.alerts.splice(i, 1); } else if (a.t < 1) a.el.style.opacity = a.t; } }
-  clearAlerts() { for (const a of this.alerts) a.el.remove(); this.alerts = []; }
+  clearAlerts() { for (const a of this.alerts) a.el.remove(); this.alerts = []; this.lastAlert = null; }
   showGameOver(winner, g) {
     const win = winner === 0; $('goTitle').textContent = win ? 'VICTORY' : 'ANNIHILATED'; $('goTitle').className = win ? 'win' : 'lose';
     $('goSub').textContent = win ? 'The enemy commander has been destroyed' : 'Your commander has fallen';
@@ -4110,7 +4188,7 @@ class UI {
     $('goStats').innerHTML = [['Time', fmtTime(g.time)], ['Difficulty', this.app.settings.difficulty], ['Units built', T.stats.built], ['Units lost', T.stats.lost], ['Enemy units destroyed', T.stats.killed], ['Metal mined', fmtNum(T.stats.metalMined)], ['Damage dealt', fmtNum(T.stats.damageDealt)], ['Nukes fired', `${T.stats.nukesFired} / ${E.stats.nukesFired}`]].map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('');
     $('gameover').classList.remove('hidden');
   }
-  reset() { this.select([]); this.stopPlacing(); this.clearAlerts(); this.groups = {}; this.mode = null; this.barDirty = true; $('gameover').classList.add('hidden'); }
+  reset() { this.select([]); this.stopPlacing(); this.clearAlerts(); this.groups = {}; this.mode = null; this.barDirty = true; this.boxStart = null; this.boxing = false; $('selbox').classList.add('hidden'); $('gameover').classList.add('hidden'); }
 }
 
 return { UI };
@@ -4128,6 +4206,7 @@ const __mod_main = (() => {
 
 const { STYLES, STYLE_U, styleById, applyStyleUniforms } = __mod_style;
 const { StarSystem } = __mod_system;
+const { setPropCards } = __mod_planet;
 const { PlanetCamera } = __mod_camera;
 const { Game } = __mod_sim;
 const { AI } = __mod_ai;
@@ -4159,7 +4238,7 @@ app.renderer = renderer;
 const scene = new THREE.Scene(); app.scene = scene;
 const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 80000);
 const sun = new THREE.DirectionalLight(0xfff1dc, 3.1); sun.castShadow = true;
-sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.5; sun.shadow.camera.near = 100; sun.shadow.camera.far = 1300;
+sun.shadow.bias = -0.00006; sun.shadow.normalBias = 0.06; sun.shadow.camera.near = 100; sun.shadow.camera.far = 1300;
 scene.add(sun); scene.add(sun.target);
 const hemi = new THREE.HemisphereLight(0x8fb4ff, 0x3a2a1a, 0.15); scene.add(hemi);
 const fill = new THREE.DirectionalLight(0xa8c8ff, 0); fill.castShadow = false; scene.add(fill); scene.add(fill.target);
@@ -4182,7 +4261,7 @@ const renderPass = new RenderPass(scene, camera); composer.addPass(renderPass);
 const gtao = new GTAOPass(scene, camera, 1, 1); gtao.enabled = false; gtao.blendIntensity = 0.7; composer.addPass(gtao);
 // layer 1 = alpha-tested / volumetric surfaces (foliage cards, grass, clouds, sky shell): drawn normally but excluded from the AO depth pass
 camera.layers.enable(1); sun.shadow.camera.layers.enable(1);
-{ const r = gtao.render.bind(gtao); gtao.render = (...a) => { camera.layers.disable(1); r(...a); camera.layers.enable(1); }; }
+{ const r = gtao.render.bind(gtao); gtao.render = (...a) => { camera.layers.disable(1); const sm = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false; r(...a); renderer.shadowMap.autoUpdate = sm; camera.layers.enable(1); }; }
 const QUAD_VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
 // ink / outline pass: depth + reconstructed-normal edges from the scene depth texture
 const edgePass = new ShaderPass({
@@ -4239,7 +4318,7 @@ app.setStyle = (id) => {
   const st = styleById(id); app.style = st; app.settings.style = st.id; try { localStorage.setItem('ta_settings', JSON.stringify(app.settings)); } catch (e) { }
   applyStyleUniforms(st.mat); STYLE_U.uStKey.value = st.light.sun / Math.PI;
   sun.intensity = st.light.sun; sun.color.set(st.light.sunColor); hemi.intensity = st.light.hemi; fill.intensity = st.light.fill; fill.color.set(st.light.fillColor); scene.environmentIntensity = st.light.env;
-  const p = st.post; bloom.strength = p.bloom[0]; bloom.radius = p.bloom[1]; bloom.threshold = p.bloom[2];
+  const p = st.post; app.bloomBase = p.bloom[0]; bloom.strength = p.bloom[0]; bloom.radius = p.bloom[1]; bloom.threshold = p.bloom[2];
   edgePass.enabled = !!p.edge; if (p.edge) { const u = edgePass.uniforms; u.uThick.value = p.edge.thick; u.uDepthT.value = p.edge.depthT; u.uNormalT.value = p.edge.normalT; u.uStrength.value = p.edge.strength; u.uBoil.value = p.edge.boil; u.uFade.value = p.edge.fade || 0; u.uColor.value.set(...p.edge.color); }
   tiltH.enabled = tiltV.enabled = !!p.tilt; if (p.tilt) for (const t of [tiltH, tiltV]) { t.uniforms.uAmount.value = p.tilt.amount; t.uniforms.uFocus.value = p.tilt.focus; t.uniforms.uWidth.value = p.tilt.width; }
   const g = grade.uniforms, gr = p.grade; g.uSat.value = gr.sat; g.uCon.value = gr.con; g.uVig.value = gr.vig; g.uSharp.value = gr.sharp; g.uCA.value = gr.ca; g.uGrain.value = gr.grain; g.uPoster.value = gr.poster; g.uPaper.value = gr.paper; g.uDots.value = p.halftone ? p.halftone.dots : 0; g.uDotSize.value = p.halftone ? p.halftone.size : 6; g.uShadowTint.value.set(...gr.shadowTint); g.uHighTint.value.set(...gr.highTint);
@@ -4249,14 +4328,18 @@ app.setStyle = (id) => {
   envT = -1e9; if (app.ui) app.ui.syncStyle();
   // a style that asks for a different world mesh: rebuild now in the menu, otherwise it applies on the next launch
   const wantDetail = (st.world && st.world.detail) || (app.settings.quality === 'medium' ? 7 : 8);
-  if (app.system && app.worldDetail && wantDetail !== app.worldDetail) { if (app.state === 'menu' && !app.generating) app.regenPlanet(); else if (app.ui && app.ui.hint) app.ui.hint('Mesh detail for this style applies on the next launch'); }
+  const wantCards = !(st.world && st.world.cards === false);
+  if (app.system && app.worldDetail && (wantDetail !== app.worldDetail || wantCards !== app.worldCards)) { if (app.state === 'menu' && !app.generating) app.regenPlanet(); else if (app.ui && app.ui.hint) app.ui.hint('Mesh detail for this style applies on the next launch'); }
 };
 app.cycleStyle = (dir) => { const i = STYLES.findIndex((s) => s.id === (app.style ? app.style.id : app.settings.style)); app.setStyle(STYLES[(i + dir + STYLES.length) % STYLES.length].id); };
 
 
 function applyQuality() {
-  const q = app.settings.quality; const dpr = q === 'medium' ? Math.min(devicePixelRatio, 1.25) : (q === 'high' ? Math.min(devicePixelRatio, 2) : devicePixelRatio);
-  renderer.setPixelRatio(dpr); const sm = q === 'medium' ? 2048 : 4096; setTextureSize(q === 'medium' ? 512 : (q === 'high' ? 768 : 1024));
+  // Render resolution. Until v3.4.1 the composer was never told the pixel ratio, so the whole post
+  // chain ran at CSS resolution and was upscaled — the presets below now actually mean something,
+  // and High is capped under the display's ratio to keep a comfortable frame rate at 4x the pixels.
+  const q = app.settings.quality; const dpr = q === 'medium' ? Math.min(devicePixelRatio, 1) : (q === 'high' ? Math.min(devicePixelRatio, 1.5) : devicePixelRatio);
+  renderer.setPixelRatio(dpr); composer.setPixelRatio(dpr); const sm = q === 'medium' ? 2048 : 4096; setTextureSize(q === 'medium' ? 512 : (q === 'high' ? 768 : 1024));
   if (sun.shadow.mapSize.x !== sm) { sun.shadow.mapSize.set(sm, sm); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
   gtao.enabled = q !== 'medium' && !(app.style && app.style.post.gtao === false); resize();
 }
@@ -4282,18 +4365,20 @@ cam.onSystem = () => { ui.barDirty = true; };
 async function createWorld() {
   app.generating = true; $('loading').classList.remove('hidden');
   if (app.system) { scene.remove(app.system.group); app.system.dispose(); }
+  if (app.fx && app.fx.dispose) app.fx.dispose();
   if (app.fxGroup) scene.remove(app.fxGroup);
   const s = app.settings; const q = s.quality;
   const stWorld = (app.style && app.style.world) || (styleById(app.settings.style).world) || {};
   const detailMain = stWorld.detail || (q === 'medium' ? 7 : 8); app.worldDetail = detailMain;
+  setPropCards(stWorld.cards !== false); app.worldCards = stWorld.cards !== false;
   const system = new StarSystem({ seed: hashString(String(s.seed || 'titan')), biome: s.biome, planetCount: s.planets, quality: q, detailMain, detailOther: Math.min(detailMain, q === 'ultra' ? 7 : 6) });
   await system.generateAsync((msg) => { $('loadingText').textContent = msg.toUpperCase(); }); scene.add(system.group);
   app.system = system; cam.system = system; cam.planet = system.planets[0];
   app.fxGroup = new THREE.Group(); scene.add(app.fxGroup);
-  app.fx = new Effects(app.fxGroup, system); app.fx.setViewport(innerWidth, innerHeight);
+  app.fx = new Effects(app.fxGroup, system, app.atmoU); app.fx.setViewport(innerWidth, innerHeight);
   app.focusPlanet(system.planets[0], null, 780);
-  if (app.style) app.setStyle(app.style.id);
-  app.generating = false; $('loading').classList.add('hidden');
+  app.generating = false; app.worldUsed = false; $('loading').classList.add('hidden');
+  if (app.style) app.setStyle(app.style.id); // after generating clears, so a mesh request made mid-build can still rebuild
 }
 app.focusPlanet = (planet, dir, dist) => { cam.focus(planet, dir, dist); };
 app.regenPlanet = async () => { if (app.generating) return; $('loadingText').textContent = 'FORGING SYSTEM'; applyQuality(); await createWorld(); setupMenuCamera(); };
@@ -4364,7 +4449,10 @@ function advance(dt, render = true) {
   sun.position.copy(cam.anchor).addScaledVector(_sunDir, 600); sun.target.position.copy(cam.anchor);
   const s = cam.mode === 'system' ? 700 : clamp(cam.dist * 1.15, 45, 700); const sc = sun.shadow.camera; sc.left = -s; sc.right = s; sc.top = s; sc.bottom = -s; sc.updateProjectionMatrix();
   updateEnvironment(performance.now(), false);
-  { const now = performance.now() / 1000; STYLE_U.uStTime.value = now; grade.uniforms.uTime.value = now; edgePass.uniforms.uTime.value = now; edgePass.uniforms.uNear.value = camera.near; edgePass.uniforms.uFar.value = camera.far; edgePass.uniforms.uProjInv.value.copy(camera.projectionMatrixInverse); edgePass.uniforms.tDepth.value = composer.renderTarget2.depthTexture;
+  // The painterly styles run a heavy bloom that reads well on a lit surface but turns the star
+  // into a white blob from orbit, where the sun sprite and its corona fill the frame.
+  bloom.strength = app.bloomBase * (cam.mode === 'system' ? 0.4 : 1);
+  { const now = performance.now() / 1000; STYLE_U.uStTime.value = now; grade.uniforms.uTime.value = now; edgePass.uniforms.uTime.value = now; edgePass.uniforms.uNear.value = camera.near; edgePass.uniforms.uFar.value = camera.far; edgePass.uniforms.uProjInv.value.copy(camera.projectionMatrixInverse); edgePass.uniforms.tDepth.value = composer.readBuffer.depthTexture; // RenderPass draws into readBuffer, and the two targets own separate depth textures
     _fillDir.copy(_sunDir).multiplyScalar(-1).addScaledVector(cam.mode === 'planet' ? cam.normal : _sunDir, 0.9).normalize(); fill.position.copy(cam.anchor).addScaledVector(_fillDir, 600); fill.target.position.copy(cam.anchor); }
   composer.render();
   if (app.state === 'playing' || app.state === 'over') ui.update(dt);

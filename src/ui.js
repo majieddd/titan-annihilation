@@ -24,7 +24,7 @@ export class UI {
       if (this.boxing) { const b = $('selbox'); const x = Math.min(e.clientX, this.boxStart.x), y = Math.min(e.clientY, this.boxStart.y); b.style.left = x + 'px'; b.style.top = y + 'px'; b.style.width = Math.abs(e.clientX - this.boxStart.x) + 'px'; b.style.height = Math.abs(e.clientY - this.boxStart.y) + 'px'; }
     });
     window.addEventListener('mouseup', (e) => {
-      if (this.app.state !== 'playing') return;
+      if (this.app.state !== 'playing') { this.boxStart = null; this.boxing = false; $('selbox').classList.add('hidden'); return; }
       if (e.button === 0) {
         const onCanvas = e.target === canvas;
         if (this.placing) { if (onCanvas) this.place(e.shiftKey); }
@@ -72,6 +72,8 @@ export class UI {
     $('launch').addEventListener('click', () => { this.readSettings(); this.app.startGame(); });
     $('optStyle').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { $('optStyle').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b)); this.app.setStyle(b.dataset.v); }));
     $('styleSel').addEventListener('change', (e) => { this.app.setStyle(e.target.value); e.target.blur(); });
+    $('styleSel').addEventListener('keydown', (e) => { if (e.key === 'Escape' || e.key === 'Enter') e.target.blur(); });
+    $('styleSel').addEventListener('blur', () => { this.cam.keys = {}; });
   }
   readSettings() {
     const s = this.app.settings;
@@ -348,7 +350,7 @@ export class UI {
     if (sound) this.app.audio.alert(cls === 'bad');
   }
   updateAlerts(dt) { for (let i = this.alerts.length - 1; i >= 0; i--) { const a = this.alerts[i]; a.t -= dt; if (a.t <= 0) { a.el.remove(); this.alerts.splice(i, 1); } else if (a.t < 1) a.el.style.opacity = a.t; } }
-  clearAlerts() { for (const a of this.alerts) a.el.remove(); this.alerts = []; }
+  clearAlerts() { for (const a of this.alerts) a.el.remove(); this.alerts = []; this.lastAlert = null; }
   showGameOver(winner, g) {
     const win = winner === 0; $('goTitle').textContent = win ? 'VICTORY' : 'ANNIHILATED'; $('goTitle').className = win ? 'win' : 'lose';
     $('goSub').textContent = win ? 'The enemy commander has been destroyed' : 'Your commander has fallen';
@@ -356,5 +358,5 @@ export class UI {
     $('goStats').innerHTML = [['Time', fmtTime(g.time)], ['Difficulty', this.app.settings.difficulty], ['Units built', T.stats.built], ['Units lost', T.stats.lost], ['Enemy units destroyed', T.stats.killed], ['Metal mined', fmtNum(T.stats.metalMined)], ['Damage dealt', fmtNum(T.stats.damageDealt)], ['Nukes fired', `${T.stats.nukesFired} / ${E.stats.nukesFired}`]].map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('');
     $('gameover').classList.remove('hidden');
   }
-  reset() { this.select([]); this.stopPlacing(); this.clearAlerts(); this.groups = {}; this.mode = null; this.barDirty = true; $('gameover').classList.add('hidden'); }
+  reset() { this.select([]); this.stopPlacing(); this.clearAlerts(); this.groups = {}; this.mode = null; this.barDirty = true; this.boxStart = null; this.boxing = false; $('selbox').classList.add('hidden'); $('gameover').classList.add('hidden'); }
 }

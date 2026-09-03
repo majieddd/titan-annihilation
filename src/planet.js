@@ -4,6 +4,12 @@ import { clamp, lerp, smoothstep, mulberry32, Simplex, MinHeap, angleBetween, ta
 import { detailTexture, cloudTexture, cloudNormalTexture, waterNormalTexture, leafClusterTexture, coniferTexture } from './textures.js';
 import { getTextureSet } from './assets.js';
 import { STYLE_U, STYLE_GLSL, STYLE_LIGHT_GLSL } from './style.js';
+
+/** Foliage build mode. Alpha-textured cards read as photographic foliage, which fights a
+    flat-shaded world, so the Poly style asks for solid faceted trees instead. Set before a
+    world is generated (same pattern as setTextureSize). */
+let PROP_CARDS = true;
+export function setPropCards(v) { PROP_CARDS = !!v; }
 import { GrassField } from './foliage.js';
 
 export const BIOMES = {
@@ -105,7 +111,18 @@ export function injectSun(mat, uSunView, key) {
     if (prev) prev(shader, renderer);
     shader.uniforms.uSunView = uSunView;
     if (!shader.fragmentShader.includes('uniform vec3 uSunView')) shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uSunView;');
-    shader.fragmentShader = shader.fragmentShader.replace('light.direction = directionalLight.direction;', 'light.direction = uSunView;');
+    // Each planet is lit by its own star direction, but the scene holds ONE directional light, so the
+    // shader has to override the direction per material. onBeforeCompile runs BEFORE three resolves
+    // #include directives, so a replace() against a chunk's body silently matches nothing (this is
+    // how it failed until v3.4.1: uSunView was declared, bound and then optimised away as unused).
+    // Inline the chunk here with the call site patched, and only for light 0 — the key light — so the
+    // styles' fill light keeps its own direction. UNROLLED_LOOP_INDEX is three's per-iteration macro.
+    if (shader.fragmentShader.includes('#include <lights_fragment_begin>')) {
+      const body = THREE.ShaderChunk.lights_fragment_begin.replace(
+        'getDirectionalLightInfo( directionalLight, directLight );',
+        'getDirectionalLightInfo( directionalLight, directLight );\n\t\t#if UNROLLED_LOOP_INDEX == 0\n\t\tdirectLight.direction = uSunView;\n\t\t#endif');
+      shader.fragmentShader = shader.fragmentShader.replace('#include <lights_fragment_begin>', body);
+    }
   };
   mat.customProgramCacheKey = () => key + '_sun';
   return mat;
@@ -390,11 +407,47 @@ export class Planet {
     return e;
   }
   heightAt(d) { return this.heightAtXYZ(d.x, d.y, d.z); }
+  /** Surface radius under a direction: where the ray from the planet centre meets the TRIANGLE
+      that is actually drawn there. Everything in the world is placed with this — props, units,
+      structures, decals, pads, the camera anchor — so it has to agree with the mesh exactly or
+      things float and sink.
+      Two earlier versions were both wrong in ways that showed up on ridges. Blending a vertex
+      with its one-ring neighbours by inverse distance is a smoothing filter: it pulled peaks down
+      and hollows up (measured: mean 0.14, worst 1.6 off the drawn surface at subdivision 8).
+      Evaluating the analytic field instead is exact at the vertices but bulges above the flat
+      triangle between them, which gets worse as the mesh coarsens (worst 3.7 at subdivision 7,
+      the Poly style's mesh).
+      So: take the nearest vertex and the two ring neighbours closest to the query, and intersect
+      the ray with their plane. Exact at the vertices AND across the face, at any detail level,
+      for about the cost of the old blend. Falls back to the analytic field if the fan is
+      degenerate. */
   heightAtXYZ(x, y, z) {
-    const v = this.lookup.nearest(x, y, z); const V = this.rv, H = this.rh, S = this.radjStart, L = this.radjList;
-    let w = 1 / (1e-5 + (1 - (V[v * 3] * x + V[v * 3 + 1] * y + V[v * 3 + 2] * z))); let ws = w, hs = w * H[v];
-    for (let k = S[v], e = S[v + 1]; k < e; k++) { const u = L[k]; w = 1 / (1e-5 + (1 - (V[u * 3] * x + V[u * 3 + 1] * y + V[u * 3 + 2] * z))); ws += w; hs += w * H[u]; }
-    return hs / ws;
+    const V = this.rv, H = this.rh, S = this.radjStart, L = this.radjList;
+    const v0 = this.lookup.nearest(x, y, z);
+    let b1 = -1, b2 = -1, d1 = -2, d2 = -2;
+    for (let k = S[v0], e = S[v0 + 1]; k < e; k++) {
+      const u = L[k]; const d = V[u * 3] * x + V[u * 3 + 1] * y + V[u * 3 + 2] * z;
+      if (d > d1) { d2 = d1; b2 = b1; d1 = d; b1 = u; } else if (d > d2) { d2 = d; b2 = u; }
+    }
+    if (b2 >= 0) {
+      const h0 = H[v0], h1 = H[b1], h2 = H[b2];
+      const ax = V[v0 * 3] * h0, ay = V[v0 * 3 + 1] * h0, az = V[v0 * 3 + 2] * h0;
+      const e1x = V[b1 * 3] * h1 - ax, e1y = V[b1 * 3 + 1] * h1 - ay, e1z = V[b1 * 3 + 2] * h1 - az;
+      const e2x = V[b2 * 3] * h2 - ax, e2y = V[b2 * 3 + 1] * h2 - ay, e2z = V[b2 * 3 + 2] * h2 - az;
+      const nx = e1y * e2z - e1z * e2y, ny = e1z * e2x - e1x * e2z, nz = e1x * e2y - e1y * e2x;
+      const den = nx * x + ny * y + nz * z;
+      // Reject a degenerate fan: if the two neighbours are nearly collinear with the query the
+      // plane is edge-on to the ray and the intersection runs away (one sample in ~500 landed a
+      // hundred units underground before this guard). Demand the face be no more than ~78 deg
+      // from the ray, and the answer stay within a few edge lengths of the vertex it came from.
+      const nlen2 = nx * nx + ny * ny + nz * nz;
+      if (den * den > 0.04 * nlen2) {
+        const t = (nx * ax + ny * ay + nz * az) / den;
+        const dh = t - h0; const e1l2 = e1x * e1x + e1y * e1y + e1z * e1z, e2l2 = e2x * e2x + e2y * e2y + e2z * e2z;
+        if (dh * dh < 16 * (e1l2 > e2l2 ? e1l2 : e2l2)) return t;
+      }
+    }
+    return this.R + this.elev(x, y, z);
   }
   aoAtXYZ(x, y, z) {
     const nav = this.nav; const v = nav.lookup.nearest(x, y, z); const V = nav.verts;
@@ -551,11 +604,16 @@ export class Planet {
       const cross = new THREE.BufferGeometry(); { const pos = [], uv = [], nrm = []; const hw = 1.35, y0 = 0.25, y1 = 5.6; for (let i = 0; i < 3; i++) { const a = i * Math.PI / 3; const dx = Math.cos(a) * hw, dz = Math.sin(a) * hw; const q = [[-dx, y0, -dz, 0, 0], [dx, y0, dz, 0.5, 0], [dx, y1, dz, 0.5, 1], [-dx, y0, -dz, 0, 0], [dx, y1, dz, 0.5, 1], [-dx, y1, -dz, 0, 1]]; for (const [x, y, z, u, v] of q) { pos.push(x, y, z); uv.push(u, v); const nn = new THREE.Vector3(x * 0.5, 0.85, z * 0.5).normalize(); nrm.push(nn.x, nn.y, nn.z); } }
         { const hw2 = 1.45, yt = 2.6; const q = [[-hw2, yt, -hw2, 0.5, 0], [hw2, yt, -hw2, 1, 0], [hw2, yt, hw2, 1, 1], [-hw2, yt, -hw2, 0.5, 0], [hw2, yt, hw2, 1, 1], [-hw2, yt, hw2, 0.5, 1]]; for (const [x, y, z, u, v] of q) { pos.push(x, y, z); uv.push(u, v); nrm.push(0, 1, 0); } } cross.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); cross.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); cross.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); }
       const forest = (d) => this.noise.fbm(d.x * 5 + 3, d.y * 5, d.z * 5, 3);
-      kinds.push({ geo: trunk, canopy: cross, canopyTex: 'conifer', bark: true, count: Math.round(4200 * area), tries: 60, test: (e, s, d) => e > 1.6 && e < 13 && s < 0.4 && forest(d) > 0.04, scale: [0.7, 1.6], stretch: 1, tree: true });
+      const coneTree = () => { const c1 = colorize(new THREE.ConeGeometry(1.15, 2.2, 6).toNonIndexed(), [0.1, 0.3, 0.12]); c1.deleteAttribute('uv'); c1.translate(0, 2.0, 0);
+        const c2 = colorize(new THREE.ConeGeometry(0.9, 2.0, 6).toNonIndexed(), [0.13, 0.36, 0.14]); c2.deleteAttribute('uv'); c2.translate(0, 3.1, 0);
+        const c3 = colorize(new THREE.ConeGeometry(0.6, 1.7, 6).toNonIndexed(), [0.16, 0.42, 0.16]); c3.deleteAttribute('uv'); c3.translate(0, 4.2, 0);
+        return mergeGeometries([trunk.clone(), c1, c2, c3], false); };
+      kinds.push(PROP_CARDS ? { geo: trunk, canopy: cross, canopyTex: 'conifer', bark: true, count: Math.round(4200 * area), tries: 60, test: (e, s, d) => e > 1.6 && e < 13 && s < 0.4 && forest(d) > 0.04, scale: [0.7, 1.6], stretch: 1, tree: true } : { geo: coneTree(), count: Math.round(4200 * area), tries: 60, test: (e, s, d) => e > 1.6 && e < 13 && s < 0.4 && forest(d) > 0.04, scale: [0.7, 1.6], stretch: 1, tree: true });
       const trunk2 = colorize(new THREE.CylinderGeometry(0.16, 0.3, 2.6, 7).toNonIndexed(), [0.3, 0.2, 0.12]); trunk2.deleteAttribute('uv'); trunk2.translate(0, 1.3, 0);
       const branches = []; for (let i = 0; i < 4; i++) { const br = colorize(new THREE.CylinderGeometry(0.06, 0.12, 1.6, 5).toNonIndexed(), [0.28, 0.19, 0.11]); br.deleteAttribute('uv'); br.translate(0, 0.8, 0); br.rotateZ(0.7 + rng() * 0.5); br.rotateY(i * Math.PI / 2 + rng() * 0.6); br.translate(0, 2.2 + rng() * 0.5, 0); branches.push(br); }
       const cards = new THREE.BufferGeometry(); { const pos = [], uv = [], nrm = []; for (let i = 0; i < 14; i++) { const cx = (rng() - 0.5) * 1.5, cy = 3.2 + (rng() - 0.5) * 1.3, cz = (rng() - 0.5) * 1.5; const sz = 1.3 + rng() * 0.7; const ax = rng() * Math.PI, ay = rng() * Math.PI * 2; const u = new THREE.Vector3(Math.cos(ay), 0, Math.sin(ay)); const vv = new THREE.Vector3(0, Math.cos(ax), Math.sin(ax)); const nn = new THREE.Vector3(cx, cy - 3.1 + 0.8, cz).normalize(); const corners = [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]]; for (const [a, b2] of corners) { pos.push(cx + (u.x * a + vv.x * b2) * sz / 2, cy + (u.y * a + vv.y * b2) * sz / 2, cz + (u.z * a + vv.z * b2) * sz / 2); uv.push(a * 0.5 + 0.5, b2 * 0.5 + 0.5); nrm.push(nn.x, nn.y, nn.z); } } cards.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); cards.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); cards.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); }
-      kinds.push({ geo: mergeGeometries([trunk2, ...branches], false), canopy: cards, bark: true, count: Math.round(2600 * area), tries: 40, test: (e, s, d) => e > 1.4 && e < 10 && s < 0.3 && forest(d) > -0.04, scale: [0.8, 1.5], stretch: 1, tree: true });
+      const blobCanopy = () => { const cn = colorize(jitter(new THREE.IcosahedronGeometry(1.5, 1).toNonIndexed(), 0.5), [0.18, 0.4, 0.14]); cn.deleteAttribute('uv'); cn.translate(0, 3.2, 0); return mergeGeometries([trunk2.clone(), cn], false); };
+      kinds.push(PROP_CARDS ? { geo: mergeGeometries([trunk2, ...branches], false), canopy: cards, bark: true, count: Math.round(2600 * area), tries: 40, test: (e, s, d) => e > 1.4 && e < 10 && s < 0.3 && forest(d) > -0.04, scale: [0.8, 1.5], stretch: 1, tree: true } : { geo: blobCanopy(), count: Math.round(2600 * area), tries: 40, test: (e, s, d) => e > 1.4 && e < 10 && s < 0.3 && forest(d) > -0.04, scale: [0.8, 1.5], stretch: 1, tree: true });
       const bush = colorize(jitter(new THREE.IcosahedronGeometry(0.8, 1).toNonIndexed(), 0.3), [0.2, 0.38, 0.13]); bush.deleteAttribute('uv'); bush.translate(0, 0.45, 0);
       kinds.push({ geo: bush, count: Math.round(2400 * area), test: (e, s) => e > 1.2 && e < 11 && s < 0.45, scale: [0.6, 1.4], stretch: 0.8, tree: true });
       kinds.push({ geo: rockGeo(), count: Math.round(1200 * area), test: (e, s) => e > 1.0 && (s > 0.25 || rng() < 0.2), scale: [0.6, 3.2], stretch: 0.7, stone: true });
@@ -588,11 +646,12 @@ export class Planet {
       while (n < k.count && tries++ < k.count * (k.tries || 8)) {
         const i = Math.floor(rng() * nav.count); this.nodeDir(i, dir);
         const e = this.navElev[i]; let slope = 0;
-        const spacing = 2 * Math.PI * R / 10242 * 32; for (let q = nav.adjStart[i], qe = nav.adjStart[i + 1]; q < qe; q++) { const u = nav.adjList[q]; slope = Math.max(slope, Math.abs(this.navElev[u] - e) / spacing); }
+        const nx = nav.verts[i * 3], ny = nav.verts[i * 3 + 1], nz = nav.verts[i * 3 + 2];
+        for (let q = nav.adjStart[i], qe = nav.adjStart[i + 1]; q < qe; q++) { const u = nav.adjList[q]; const dx = nav.verts[u * 3] - nx, dy = nav.verts[u * 3 + 1] - ny, dz = nav.verts[u * 3 + 2] - nz; const sp = Math.sqrt(dx * dx + dy * dy + dz * dz) * R; slope = Math.max(slope, Math.abs(this.navElev[u] - e) / sp); }
         if (!k.test(e, slope, dir)) continue;
         let bad = false; for (const s of this.spots) if (s.dir.dot(dir) > cosSpot) { bad = true; break; } if (bad) continue;
         for (const sp of this.spawns) if (sp.dir.dot(dir) > cosSpawn) { bad = true; break; } if (bad) continue;
-        rotateTangent(dir, anyTangent(dir, _v1), rng() * TAU, tan); moveOnSphere(dir, tan, (rng() * 2.4) / R, dir);
+        rotateTangent(dir, anyTangent(dir, _v1), rng() * TAU, tan); moveOnSphere(dir, tan, (rng() * 5.5) / R, dir);
         const h = this.heightAt(dir); pos.copy(dir).multiplyScalar(h - 0.15);
         rotateTangent(dir, anyTangent(dir, _v1), rng() * TAU, tan); frameQuat(dir, tan, _q);
         const sc = k.scale[0] + rng() * (k.scale[1] - k.scale[0]); _s.set(sc, sc * (k.stretch + rng() * 0.4), sc); _m.compose(pos, _q, _s); mesh.setMatrixAt(n, _m); if (canopyMesh) canopyMesh.setMatrixAt(n, _m);

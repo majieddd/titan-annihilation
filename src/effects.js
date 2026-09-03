@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { STYLE_U } from './style.js';
+import { injectFog } from './planet.js';
 import { frameQuat, anyTangent, clamp, lerp } from './util.js';
 
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
@@ -150,8 +151,9 @@ function makeScorchTexture() {
 }
 
 export class Effects {
-  constructor(scene, system) {
-    this.scene = scene; this.system = system; this.planets = system.planets; this.time = 0;
+  constructor(scene, system, atmoU) {
+    this.scene = scene; this.system = system; this.planets = system.planets; this.time = 0; this.atmoU = atmoU;
+    const lit = (m, key) => (atmoU ? injectFog(m, atmoU, key) : m); // share the world's atmosphere and art style
     const cf = (x, y, z) => this.centerFor(x, y, z);
     this.sparks = new GPUParticles(30000, { additive: true }); this.glow = new GPUParticles(2500, { additive: true, renderOrder: 21 }); this.smoke = new GPUParticles(20000, { additive: false, renderOrder: 18 });
     this.sparks.centerFor = cf; this.glow.centerFor = cf; this.smoke.centerFor = cf;
@@ -161,8 +163,8 @@ export class Effects {
     this.rings = new InstPool(new THREE.RingGeometry(0.72, 1, 48).rotateX(-Math.PI / 2), addMat({ side: THREE.DoubleSide }), 120, { renderOrder: 22 }); this.ringList = [];
     this.bolts = new InstPool(new THREE.BoxGeometry(0.24, 0.24, 1), addMat(), 800, { renderOrder: 22 });
     this.shells = new InstPool(new THREE.SphereGeometry(0.42, 8, 6), addMat(), 500, { renderOrder: 22 });
-    this.missiles = new InstPool(new THREE.ConeGeometry(0.28, 1.2, 6).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xdde3ea, roughness: 0.4, metalness: 0.5 }), 400, { shadow: false });
-    this.bombs = new InstPool(new THREE.SphereGeometry(0.45, 8, 6), new THREE.MeshStandardMaterial({ color: 0x333940, roughness: 0.6 }), 200, { color: false });
+    this.missiles = new InstPool(new THREE.ConeGeometry(0.28, 1.2, 6).rotateX(Math.PI / 2), lit(new THREE.MeshStandardMaterial({ color: 0xdde3ea, roughness: 0.4, metalness: 0.5 }), 'fx_missile'), 400, { shadow: false });
+    this.bombs = new InstPool(new THREE.SphereGeometry(0.45, 8, 6), lit(new THREE.MeshStandardMaterial({ color: 0x333940, roughness: 0.6 }), 'fx_bomb'), 200, { color: false });
     this.selRings = new InstPool(new THREE.RingGeometry(0.8, 1, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }), 500, { renderOrder: 12 });
     this.rangeRings = new InstPool(new THREE.RingGeometry(0.985, 1, 96).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide, depthTest: false }), 60, { renderOrder: 13 });
     const dg = new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2);
@@ -188,7 +190,7 @@ export class Effects {
   upAt(p, out) { const c = this.centerFor(p.x, p.y, p.z); return out.copy(p).sub(c).normalize(); }
   buildSpotPads() {
     let n = 0; for (const p of this.planets) n += p.spots.length;
-    const pad = new THREE.InstancedMesh(new THREE.CylinderGeometry(2.3, 2.6, 0.5, 6), new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.7, metalness: 0.5 }), n);
+    const pad = new THREE.InstancedMesh(new THREE.CylinderGeometry(2.3, 2.6, 0.5, 6), this.atmoU ? injectFog(new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.7, metalness: 0.5 }), this.atmoU, 'fx_pad') : new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.7, metalness: 0.5 }), n);
     const ring = new THREE.InstancedMesh(new THREE.TorusGeometry(1.7, 0.12, 6, 24).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.25, 0.9, 1.2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), n);
     pad.receiveShadow = true; pad.castShadow = true; let i = 0;
     for (const p of this.planets) for (const s of p.spots) {
@@ -198,6 +200,14 @@ export class Effects {
     this.spotPads = pad; this.spotRings = ring; this.scene.add(pad, ring);
   }
   setViewport(w, h) { this.icons.uniforms.uRes.value.set(w, h); this.bars.uniforms.uRes.value.set(w, h); }
+  /** Free every GPU resource. A world rebuild drops the whole Effects instance, and switching art
+      styles can rebuild the world repeatedly, so without this each switch leaked its geometries,
+      materials and canvas textures. */
+  dispose() {
+    const kill = (m) => { if (!m) return; if (m.geometry) m.geometry.dispose(); const mats = Array.isArray(m.material) ? m.material : [m.material]; for (const mat of mats) { if (!mat) continue; for (const k of ['map', 'alphaMap', 'normalMap']) if (mat[k] && mat[k].dispose) mat[k].dispose(); if (mat.uniforms) for (const u of Object.values(mat.uniforms)) { const v = u && u.value; if (v && v.isTexture && v.dispose) v.dispose(); } mat.dispose(); } if (m.parent) m.parent.remove(m); };
+    for (const p of [this.sparks, this.glow, this.smoke, this.beams, this.rings, this.bolts, this.shells, this.missiles, this.bombs, this.selRings, this.rangeRings, this.decals, this.icons, this.bars]) kill(p && p.mesh);
+    kill(this.spotPads); kill(this.spotRings);
+  }
   // ---- spawners ----
   sparkBurst(p, n, count, speed, life, size, col, opts = {}) {
     for (let i = 0; i < count; i++) {
@@ -212,7 +222,7 @@ export class Effects {
     }
   }
   flash(p, size, col, life = 0.22) { this.glow.spawn(p.x, p.y, p.z, 0, 0, 0, life, size, col[0], col[1], col[2], 0, 0, 0.8, 0); }
-  explosion(p, size, teamCol) {
+  explosion(p, size, teamCol, ground = true) {
     const n = this.upAt(p, _n);
     this.flash(p, 3.2 * size, [1, 0.9, 0.7], 0.16 + 0.04 * size); this.flash(p, 1.6 * size, [1, 0.6, 0.25], 0.4);
     this.sparkBurst(p, n, Math.round(18 * size), 14 * Math.sqrt(size), 0.9, 0.9 * Math.sqrt(size), [1.0, 0.7, 0.3]);
@@ -221,9 +231,9 @@ export class Effects {
     this.smokePuff(p, n, Math.round(6 * size), 18 * Math.sqrt(size), 1.6, 0.35 * Math.sqrt(size), [0.12, 0.12, 0.13], { grav: 45, drag: 0.4, grow: 0, up: 1.2 });
     if (teamCol) this.sparkBurst(p, n, Math.round(6 * size), 10 * Math.sqrt(size), 1.0, 0.5, teamCol);
     if (size >= 1.4) this.ring(p, n, [1.0, 0.75, 0.45], 9 * size, 0.55);
-    if (size >= 0.9) this.scorch(p, n, 2.2 * size);
+    if (ground && size >= 0.9) this.scorch(p, n, 2.2 * size);
   }
-  bigExplosion(p, size) {
+  bigExplosion(p, size, ground = true) {
     const n = this.upAt(p, _n);
     this.flash(p, 12 * size, [1, 0.95, 0.85], 0.35); this.flash(p, 7 * size, [1, 0.6, 0.2], 0.9);
     this.sparkBurst(p, n, 200 * size, 40 * size, 2.0, 1.1, [1.0, 0.7, 0.3], { grav: 25, drag: 1.2 });
@@ -231,7 +241,7 @@ export class Effects {
     this.smokePuff(p, n, 90 * size, 18 * size, 6, 7 * size, [0.2, 0.18, 0.17], { grav: -3 });
     this.smokePuff(p, n, 40 * size, 50 * size, 3, 1.0, [0.12, 0.12, 0.13], { grav: 50, drag: 0.3, grow: 0, up: 1.5 });
     this.ring(p, n, [0.8, 0.6, 0.35], 60 * size, 1.4); this.ring(p, n, [0.35, 0.5, 0.7], 100 * size, 2.2);
-    this.scorch(p, n, 16 * size);
+    if (ground) this.scorch(p, n, 16 * size);
   }
   nuke(p, n) {
     this.flash(p, 55, [1, 0.98, 0.9], 0.5); this.flash(p, 30, [1, 0.6, 0.2], 2.0); this.flash(p, 18, [1, 0.35, 0.1], 4);

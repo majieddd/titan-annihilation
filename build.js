@@ -41,5 +41,13 @@ const standalone = '<!doctype html>\n<html lang="en">\n<head>\n<meta name="viewp
 fs.writeFileSync(path.join(__dirname, 'dist', 'titan-annihilation.html'), standalone);
 // GitHub Pages serves the root: ship the single-file bundle there so a deploy can never mix cached old modules with a new page
 fs.writeFileSync(path.join(__dirname, 'index.html'), standalone);
-const vm = fs.readFileSync(path.join(__dirname, 'src', 'util.js'), 'utf8').match(/VERSION = '([^']+)'/); if (vm) { fs.mkdirSync(path.join(__dirname, 'versions'), { recursive: true }); fs.writeFileSync(path.join(__dirname, 'versions', `titan-annihilation-v${vm[1]}.html`), standalone); console.log('versions/titan-annihilation-v' + vm[1] + '.html'); }
+const vm = fs.readFileSync(path.join(__dirname, 'src', 'util.js'), 'utf8').match(/VERSION = '([^']+)'/);
+if (vm) {
+  fs.mkdirSync(path.join(__dirname, 'versions'), { recursive: true });
+  const vp = path.join(__dirname, 'versions', `titan-annihilation-v${vm[1]}.html`);
+  // versions/ is the release archive the changelog points at, so a routine build must not rewrite an
+  // already-shipped file with whatever happens to be in the tree. Pass --release to cut a new one.
+  if (fs.existsSync(vp) && !process.argv.includes('--release')) console.log('versions/titan-annihilation-v' + vm[1] + '.html exists, not overwritten (use --release)');
+  else { fs.writeFileSync(vp, standalone); console.log('versions/titan-annihilation-v' + vm[1] + '.html'); }
+}
 console.log('dist/index.html', (html.length / 1024).toFixed(0) + ' KB;', 'dist/titan-annihilation.html', (standalone.length / 1024).toFixed(0) + ' KB');

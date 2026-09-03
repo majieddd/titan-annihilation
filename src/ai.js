@@ -290,9 +290,8 @@ export class AI {
       if (c.commander && c.commander.planet === e.planet) { const d = e.pos.distanceTo(c.commander.pos); if (d < 90 && d < td) { td = d; threat = e; } }
     }
     if (!threat) return;
-    this.lastThreat = t;
     const responders = c.ground.filter((u) => u.drop <= 0 && (!u.orders.length || (u.ai && u.ai.role === 'defend' && t - u.ai.t > 12)) && g.canReach(u, threat.planet) && (u.planet !== threat.planet || u.pos.distanceTo(threat.pos) < 260));
-    if (responders.length) { g.orderAttackMove(responders, threat.planet, threat.dir, false); for (const u of responders) u.ai = { role: 'defend', t }; }
+    if (responders.length) { this.lastThreat = t; g.orderAttackMove(responders, threat.planet, threat.dir, false); for (const u of responders) u.ai = { role: 'defend', t }; }
     if (threat.def.layer === 'air') { const f = c.fighters.filter((u) => !u.orders.length && u.planet === threat.planet); if (f.length) g.orderAttackMove(f, threat.planet, threat.dir, false); }
     if (this.wave && threat.planet === this.home && td < 50 && this.value(responders) < this.value(this.wave.units) * 0.3 && this.centroid(this.wave.units, _t).distanceTo(this.home.center) < this.home.R + 40 && angleBetween(_t.clone().sub(this.home.center).normalize(), this.base) * this.home.R > 150) {
       g.orderAttackMove(this.wave.units, threat.planet, threat.dir, false); this.wave = null;
