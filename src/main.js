@@ -25,6 +25,10 @@ const STEP = 1 / 60;
 const $ = (id) => document.getElementById(id);
 const app = { state: 'loading', paused: false, settings: { difficulty: 'normal', biome: 'earth', seed: 'titan', quality: 'high', planets: 5, style: 'polished' }, game: null, ai: null, system: null, fx: null, fxGroup: null };
 try { const s = JSON.parse(localStorage.getItem('ta_settings') || 'null'); if (s) Object.assign(app.settings, s); } catch (e) { }
+// A returning player carries a saved planet count from before every biome was guaranteed a slot, so
+// they would still launch into a three-world system and never see two of the five worlds. Migrate a
+// stored count up to the full set once, and record that it was done so a deliberate choice sticks.
+if (app.settings.sv !== 1) { if ((app.settings.planets || 0) < 5) app.settings.planets = 5; app.settings.sv = 1; }
 if (!['medium', 'high', 'ultra'].includes(app.settings.quality)) app.settings.quality = 'high';
 if (![2, 3, 4, 5].includes(app.settings.planets)) app.settings.planets = 5;
 if (!STYLES.some((s) => s.id === app.settings.style)) app.settings.style = 'polished';

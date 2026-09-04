@@ -36,6 +36,9 @@ survived three previous attempts to kill it, and both were measured rather than 
   Ground builders now only target spots they can actually reach.
 - **Particles cost nothing when nothing is burning.** The effect pool drew its whole capacity every
   frame from the title screen onward, culling dead slots inside the vertex shader after paying for them.
+- **Returning players get all five worlds.** A saved planet count from before every biome was
+  guaranteed a slot survived the update, so an existing player still launched into a three-world system
+  and never saw two of the five. Stored settings are migrated up once.
 - **A failed world generation now says so** instead of leaving a black screen under a loading card.
 - **A build guard for a bug that `node --check` cannot see.** A line comment spliced into a single-line
   function silently swallows the rest of that physical line, statements included. That is what broke the
