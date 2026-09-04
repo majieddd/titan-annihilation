@@ -4,7 +4,11 @@
 const fs = require('fs');
 const path = require('path');
 const ORDER = ['util', 'textures', 'assets', 'style', 'foliage', 'planet', 'system', 'defs', 'models', 'effects', 'audio', 'sim', 'ai', 'camera', 'ui', 'main'];
-const imports = new Set();
+// External imports are hoisted into one shared scope, so two modules importing the SAME name from
+// the same package must not each emit a declaration: that is a SyntaxError that kills the whole
+// bundle while the dev page (real modules, separate scopes) keeps working. Merge them per source.
+const namedImports = new Map(); // specifier -> Set of names
+const bareImports = new Set();  // anything not of the form `import { a, b } from '...'`
 let body = '';
 for (const name of ORDER) {
   const file = path.join(__dirname, 'src', name + '.js');
@@ -13,7 +17,15 @@ for (const name of ORDER) {
   // relative imports -> destructure from the module object
   src = src.replace(/^import\s+\{([^}]+)\}\s+from\s+['"]\.\/(\w+)\.js['"];?[ \t]*$/gm, (m, names, mod) => `const {${names}} = __mod_${mod};`);
   // external imports -> hoist
-  src = src.replace(/^(import\s+[^;]+?from\s+['"][^.'"][^'"]*['"];?)[ \t]*$/gm, (m, s) => { imports.add(s); return ''; });
+  src = src.replace(/^(import\s+[^;]+?from\s+['"][^.'"][^'"]*['"];?)[ \t]*$/gm, (m, stmt) => {
+    const named = stmt.match(/^import\s+\{([^}]+)\}\s+from\s+['"]([^'"]+)['"]/);
+    if (named) {
+      const spec = named[2];
+      if (!namedImports.has(spec)) namedImports.set(spec, new Set());
+      for (const n of named[1].split(',')) { const t = n.trim(); if (t) namedImports.get(spec).add(t); }
+    } else bareImports.add(stmt);
+    return '';
+  });
   if (/^import\s/m.test(src)) throw new Error('unhandled import in ' + name);
   const exported = [];
   src = src.replace(/^export\s+((?:async\s+)?(?:function|class|const|let|var)\s+([A-Za-z_$][\w$]*))/gm, (m, decl, id) => { exported.push(id); return decl; });
@@ -32,7 +44,21 @@ if (fs.existsSync(embedDir)) {
 }
 let html = fs.readFileSync(path.join(__dirname, 'dev.html'), 'utf8');
 if (texData) html = html.replace('<script type="importmap">', `<script>window.__TEXDATA = ${JSON.stringify(texData)};</script>\n<script type="importmap">`);
-html = html.replace(/<script type="module" src="src\/main\.js"><\/script>/, () => `<script type="module">\n${[...imports].join('\n')}\n${body}\n</script>`);
+const importLines = [...bareImports];
+for (const [spec, names] of namedImports) importLines.push(`import { ${[...names].join(', ')} } from '${spec}';`);
+// Parse the bundled script before shipping it. Every module has its own scope on the dev page, so a
+// collision between two hoisted imports only breaks the BUNDLE — which is the build users actually
+// run. That shipped once; never again.
+{
+  const script = importLines.join('\n') + '\n' + body;
+  const tmp = path.join(__dirname, 'dist'); fs.mkdirSync(tmp, { recursive: true });
+  const probe = path.join(tmp, '.syntax-probe.mjs');
+  fs.writeFileSync(probe, script);
+  const r = require('child_process').spawnSync(process.execPath, ['--check', probe], { encoding: 'utf8' });
+  fs.unlinkSync(probe);
+  if (r.status !== 0) { console.error('BUNDLE SYNTAX ERROR — not written:\n' + (r.stderr || '').split('\n').slice(0, 6).join('\n')); process.exit(1); }
+}
+html = html.replace(/<script type="module" src="src\/main\.js"><\/script>/, () => `<script type="module">\n${importLines.join('\n')}\n${body}\n</script>`);
 html = html.replace(/<!doctype html>\s*/i, '').replace(/<\/?html[^>]*>\s*/gi, '').replace(/<\/?head>\s*/gi, '').replace(/<\/?body[^>]*>\s*/gi, '').replace(/<meta name="viewport"[^>]*>\s*/gi, '');
 fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });
 fs.writeFileSync(path.join(__dirname, 'dist', 'index.html'), html);

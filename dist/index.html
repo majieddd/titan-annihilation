@@ -161,7 +161,6 @@ input[type=text]{font-family:inherit;background:rgba(0,0,0,.5);border:1px solid 
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -374,7 +373,7 @@ function makePeriodicWorley(seed) {
     out.f1 = Math.sqrt(f1); out.f2 = Math.sqrt(f2); out.id = id; return out;
   };
 }
-const VERSION = '3.6.0';
+const VERSION = '3.6.1';
 function cubicBezier(p0, p1, p2, p3, t, out) {
   const mt = 1 - t; const a = mt * mt * mt, b = 3 * mt * mt * t, c = 3 * mt * t * t, d = t * t * t;
   return out.set(p0.x * a + p1.x * b + p2.x * c + p3.x * d, p0.y * a + p1.y * b + p2.y * c + p3.y * d, p0.z * a + p1.z * b + p2.z * c + p3.z * d);
