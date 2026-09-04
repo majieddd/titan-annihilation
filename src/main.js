@@ -71,35 +71,75 @@ camera.layers.enable(1); sun.shadow.camera.layers.enable(1);
 const QUAD_VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
 // ink / outline pass: depth + reconstructed-normal edges from the scene depth texture
 const edgePass = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uNear: { value: 1 }, uFar: { value: 1000 }, uProjInv: { value: new THREE.Matrix4() }, uThick: { value: 1.5 }, uDepthT: { value: 0.05 }, uNormalT: { value: 0.35 }, uStrength: { value: 1 }, uBoil: { value: 0 }, uFade: { value: 0 }, uTime: { value: 0 }, uCoh: { value: 0 }, uColor: { value: new THREE.Vector3(0, 0, 0) } },
+  uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uNear: { value: 1 }, uFar: { value: 1000 }, uProjInv: { value: new THREE.Matrix4() }, uThick: { value: 1.5 }, uDepthT: { value: 0.05 }, uNormalT: { value: 0.35 }, uStrength: { value: 1 }, uBoil: { value: 0 }, uFade: { value: 0 }, uTime: { value: 0 }, uWidth: { value: 3 }, uStepAbs: { value: 0.55 }, uCrease: { value: 0.55 }, uTaper: { value: 0.55 }, uColor: { value: new THREE.Vector3(0, 0, 0) } },
   vertexShader: QUAD_VS,
-  fragmentShader: `uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform vec2 uTexel; uniform float uNear, uFar, uThick, uDepthT, uNormalT, uStrength, uBoil, uFade, uTime, uCoh; uniform vec3 uColor; uniform mat4 uProjInv; varying vec2 vUv;
+  // Ink model. The old one took the second derivative of depth, which is a HAIRLINE: it marks only
+  // the one pixel where curvature peaks, so the line came out thin, broken and mushy, and widening it
+  // via the sampling radius only made the detector fire on coarser clutter. Instead ask, for every
+  // pixel, "is anything NEARER than me within uWidth pixels?" — the minimum depth over a small disc.
+  // That paints a solid, even band of exactly uWidth on the far side of every silhouette, which is how
+  // a pen actually behaves, and it cannot dash because a minimum over a disc varies continuously.
+  // Requiring the step to clear an absolute world-space size is also a far better clutter filter than
+  // the screen-space one it replaces: grass stands a few centimetres proud of the ground and never
+  // qualifies, while a tree or a tank always does.
+  fragmentShader: `uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform vec2 uTexel; uniform float uNear, uFar, uThick, uDepthT, uNormalT, uStrength, uBoil, uFade, uTime, uWidth, uStepAbs, uCrease, uTaper; uniform vec3 uColor; uniform mat4 uProjInv; varying vec2 vUv;
     float lin(float d) { float z = d * 2.0 - 1.0; return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }
     vec3 vpos(vec2 uv, float d) { vec4 p = uProjInv * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); return p.xyz / p.w; }
     void main(){
       vec2 uv = vUv; vec4 col = texture2D(tDiffuse, vUv);
       if (uBoil > 0.0) { float t = floor(uTime * 8.0); uv += (vec2(fract(sin(t * 12.99) * 43758.5), fract(sin(t * 78.23) * 43758.5)) - 0.5) * uTexel * 2.0 * uBoil; }
-      vec2 o = uTexel * uThick; float d0 = texture2D(tDepth, uv).r; float z0 = lin(d0);
-      float dL = texture2D(tDepth, uv - vec2(o.x, 0.0)).r, dR = texture2D(tDepth, uv + vec2(o.x, 0.0)).r, dD = texture2D(tDepth, uv - vec2(0.0, o.y)).r, dU = texture2D(tDepth, uv + vec2(0.0, o.y)).r;
-      float zL = lin(dL), zR = lin(dR), zD = lin(dD), zU = lin(dU);
-      float zmin = min(min(zL, zR), min(zD, zU)); float zn = min(z0, zmin);
-      float dz = max(abs(zL + zR - 2.0 * z0), abs(zD + zU - 2.0 * z0)) / zn;
-      float far = max(max(abs(zL - z0), abs(zR - z0)), max(abs(zD - z0), abs(zU - z0))) / zn;
-      float eDepth = smoothstep(uDepthT, uDepthT * 2.5, max(dz, far * 0.35));
-      vec3 P = vpos(uv, d0); vec3 Px = vpos(uv + vec2(o.x, 0.0), dR) - P; vec3 Py = vpos(uv + vec2(0.0, o.y), dU) - P; vec3 n0 = normalize(cross(Px, Py));
-      vec3 PL = vpos(uv - vec2(o.x, 0.0), dL); vec3 PD = vpos(uv - vec2(0.0, o.y), dD); vec3 n1 = normalize(cross(P - PL, Py)); vec3 n2 = normalize(cross(Px, P - PD));
+      float d0 = texture2D(tDepth, uv).r; float z0 = lin(d0);
+      // The sky is left in deliberately: at depth 1.0 it reads as maximally far, so sky pixels beside a
+      // silhouette take the ink and every object gets a proper outline against it.
+      // Constant screen-space width. A distance taper was tried and is wrong here: this detector inks
+      // the pixel whose NEIGHBOUR is nearer, so an object's outline is painted on the background
+      // behind it — and against the sky that background is the far plane at 80000, which pinned the
+      // taper to its minimum and drew every silhouette against the sky at 55% width, at any range.
+      // The opacity fade below already does the distance dissolve, and it keys off the near surface.
+      float wpx = uWidth;
+      // Twelve fixed rays make the isoline around a small feature a visible dodecagon and let anything
+      // thinner than the ray spacing fall between them and dash. Rotating the ring by a quarter step
+      // across a 2x2 pixel quad gives 48 effective angles for no extra fetches; the residual 1px
+      // stipple is absorbed by the multisampled target.
+      float ph = (mod(floor(gl_FragCoord.x), 2.0) + 2.0 * mod(floor(gl_FragCoord.y), 2.0)) * 0.1308997;
+      // A neighbour only earns a line if it is ink-eligible. Grass writes alpha 0 (see foliage.js) and
+      // so can never lower zmin, which is what keeps a hillside of tufts from turning to black stipple
+      // while a bot of the very same height still gets a full outline.
+      float zmin = z0;
+      for (int i = 0; i < 12; i++) {
+        vec2 dir = vec2(cos(float(i) * 0.5235988 + ph), sin(float(i) * 0.5235988 + ph));
+        vec2 o1 = dir * uTexel * wpx, o2 = o1 * 0.55;
+        float z1 = lin(texture2D(tDepth, uv + o1).r), a1 = texture2D(tDiffuse, uv + o1).a;
+        float z2 = lin(texture2D(tDepth, uv + o2).r), a2 = texture2D(tDiffuse, uv + o2).a;
+        zmin = min(zmin, mix(z0, z1, step(0.5, a1)));
+        zmin = min(zmin, mix(z0, z2, step(0.5, a2)));
+      }
+      // Absolute floor rejects near-field clutter; the relative term keeps the line scale-free at range.
+      float need = max(uStepAbs, uDepthT * z0);
+      float eSil = smoothstep(need, need * 1.22, z0 - zmin);
+      // Interior creases stay thin and separately controlled, the way ink is lighter inside a shape
+      // than around its edge.
+      vec2 o = uTexel * uThick;
+      float dL = texture2D(tDepth, uv - vec2(o.x, 0.0)).r, dR = texture2D(tDepth, uv + vec2(o.x, 0.0)).r;
+      float dD = texture2D(tDepth, uv - vec2(0.0, o.y)).r, dU = texture2D(tDepth, uv + vec2(0.0, o.y)).r;
+      vec3 P = vpos(uv, d0); vec3 Px = vpos(uv + vec2(o.x, 0.0), dR) - P; vec3 Py = vpos(uv + vec2(0.0, o.y), dU) - P;
+      vec3 n0 = normalize(cross(Px, Py));
+      vec3 PL = vpos(uv - vec2(o.x, 0.0), dL); vec3 PD = vpos(uv - vec2(0.0, o.y), dD);
+      vec3 n1 = normalize(cross(P - PL, Py)); vec3 n2 = normalize(cross(Px, P - PD));
       float eN = smoothstep(uNormalT, uNormalT + 0.3, max(1.0 - dot(n0, n1), 1.0 - dot(n0, n2))) * (1.0 - step(0.9999, d0));
-      // Grass cards are thin slivers, so the outline detector drew a black ring around every blade and
-      // the ground turned to crawling stipple. A real silhouette is locally a LINE: it breaks depth
-      // along one screen axis while the perpendicular axis stays smooth. Clutter breaks both at once.
-      // Taking the smaller of the two axis gradients therefore reads near zero on lines and high in
-      // foliage, which separates the ink we want from the noise we do not.
-      float ax = abs(zL - zR) / zn, ay = abs(zD - zU) / zn;
-      float coh = uCoh > 0.0 ? 1.0 - smoothstep(uCoh, uCoh * 3.0, min(ax, ay)) : 1.0;
-      float e = clamp(max(eDepth, eN) * uStrength * coh, 0.0, 1.0);
+      float zn = min(z0, zmin);
+      // The screen-space clutter heuristic that used to live here is gone. It was a proxy for "this is
+      // foliage, do not ink it", and it guessed wrong often enough to chew real silhouettes into
+      // dashes. Foliage now says so itself through the alpha channel, which is exact.
+      // Note the eligibility test is only on the NEIGHBOUR, never on the pixel being drawn: the band
+      // lands on whatever is behind an object, and that is often grass. Gating the centre pixel too
+      // would chew a unit's outline into dashes wherever it happens to stand in long grass.
+      float e = clamp(max(eSil, eN * uCrease) * uStrength, 0.0, 1.0);
       if (uFade > 0.0) e *= exp(-zn / uFade); // ink dissolves into the haze with distance
       gl_FragColor = vec4(mix(col.rgb, uColor, e), col.a); }` });
 edgePass.enabled = false; composer.insertPass(edgePass, 1);
+// Ink width is authored in CSS pixels; uTexel is in device pixels, so it is rescaled on every resize.
+let edgeWidthCss = 3;
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.3, 0.5, 0.92); composer.addPass(bloom);
 const grade = new ShaderPass({
   uniforms: { tDiffuse: { value: null }, uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uSat: { value: 1.08 }, uCon: { value: 1.06 }, uVig: { value: 0.4 }, uSharp: { value: 0.22 }, uCA: { value: 0.006 }, uGrain: { value: 0.03 }, uPoster: { value: 0 }, uPaper: { value: 0 }, uDots: { value: 0 }, uDotSize: { value: 6 }, uTime: { value: 0 }, uShadowTint: { value: new THREE.Vector3(1, 1, 1) }, uHighTint: { value: new THREE.Vector3(1, 1, 1) } },
@@ -132,7 +172,7 @@ app.setStyle = (id) => {
   applyStyleUniforms(st.mat); STYLE_U.uStKey.value = st.light.sun / Math.PI;
   sun.intensity = st.light.sun; sun.color.set(st.light.sunColor); hemi.intensity = st.light.hemi; fill.intensity = st.light.fill; fill.color.set(st.light.fillColor); scene.environmentIntensity = st.light.env;
   const p = st.post; app.bloomBase = p.bloom[0]; bloom.strength = p.bloom[0]; bloom.radius = p.bloom[1]; bloom.threshold = p.bloom[2];
-  edgePass.enabled = !!p.edge; if (p.edge) { const u = edgePass.uniforms; u.uThick.value = p.edge.thick; u.uDepthT.value = p.edge.depthT; u.uNormalT.value = p.edge.normalT; u.uStrength.value = p.edge.strength; u.uBoil.value = p.edge.boil; u.uFade.value = p.edge.fade || 0; u.uCoh.value = p.edge.coherence || 0; u.uColor.value.set(...p.edge.color); }
+  edgePass.enabled = !!p.edge; if (p.edge) { const u = edgePass.uniforms; u.uThick.value = p.edge.thick; u.uDepthT.value = p.edge.depthT; u.uNormalT.value = p.edge.normalT; u.uStrength.value = p.edge.strength; u.uBoil.value = p.edge.boil; u.uFade.value = p.edge.fade || 0; u.uStepAbs.value = p.edge.stepAbs !== undefined ? p.edge.stepAbs : 0.55; u.uCrease.value = p.edge.crease !== undefined ? p.edge.crease : 0.55; u.uTaper.value = p.edge.taper !== undefined ? p.edge.taper : 0.55; edgeWidthCss = p.edge.width !== undefined ? p.edge.width : 3; u.uWidth.value = edgeWidthCss * renderer.getPixelRatio(); u.uColor.value.set(...p.edge.color); }
   tiltH.enabled = tiltV.enabled = !!p.tilt; if (p.tilt) for (const t of [tiltH, tiltV]) { t.uniforms.uAmount.value = p.tilt.amount; t.uniforms.uFocus.value = p.tilt.focus; t.uniforms.uWidth.value = p.tilt.width; }
   const g = grade.uniforms, gr = p.grade; g.uSat.value = gr.sat; g.uCon.value = gr.con; g.uVig.value = gr.vig; g.uSharp.value = gr.sharp; g.uCA.value = gr.ca; g.uGrain.value = gr.grain; g.uPoster.value = gr.poster; g.uPaper.value = gr.paper; g.uDots.value = p.halftone ? p.halftone.dots : 0; g.uDotSize.value = p.halftone ? p.halftone.size : 6; g.uShadowTint.value.set(...gr.shadowTint); g.uHighTint.value.set(...gr.highTint);
   renderer.toneMapping = TONE[p.tone] || THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = p.exposure;
@@ -251,6 +291,7 @@ function resize() {
   const tx = 1 / (w * pr), ty = 1 / (h * pr);
   grade.uniforms.uTexel.value.set(tx, ty);
   edgePass.uniforms.uTexel.value.set(tx, ty);
+  edgePass.uniforms.uWidth.value = edgeWidthCss * pr;
   tiltH.uniforms.uTexel.value.set(tx, ty);
   tiltV.uniforms.uTexel.value.set(tx, ty);
   // Ambient occlusion is by far the most expensive pass and its result is low frequency, so it runs

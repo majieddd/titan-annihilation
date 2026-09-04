@@ -19,6 +19,11 @@ export class GrassField {
     const U = this.uniforms;
     mat.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, U);
+      // Opt grass out of the ink pass. Depth alone cannot tell a 1.3-unit grass tuft from a 1.4-unit
+      // bot, so the outline pass reads this: alpha 0 means "not something to draw a line around".
+      // Nothing else in the scene writes anything but 1, so the channel is free for it.
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <opaque_fragment>', '#include <opaque_fragment>\ngl_FragColor.a = 0.0;');
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nattribute vec3 aPos; attribute vec3 aInfo; uniform float uTime; uniform vec3 uCamPos; uniform vec3 uCenter; uniform float uFade; varying float vTint;')
         .replace('#include <beginnormal_vertex>', 'vec3 objectNormal = normalize(aPos);\n#ifdef USE_TANGENT\nvec3 objectTangent = vec3( tangent.xyz );\n#endif')

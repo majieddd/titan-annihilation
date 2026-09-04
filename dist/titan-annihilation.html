@@ -379,7 +379,7 @@ function makePeriodicWorley(seed) {
     out.f1 = Math.sqrt(f1); out.f2 = Math.sqrt(f2); out.id = id; return out;
   };
 }
-const VERSION = '3.7.1';
+const VERSION = '3.8.0';
 function cubicBezier(p0, p1, p2, p3, t, out) {
   const mt = 1 - t; const a = mt * mt * mt, b = 3 * mt * mt * t, c = 3 * mt * t * t, d = t * t * t;
   return out.set(p0.x * a + p1.x * b + p2.x * c + p3.x * d, p0.y * a + p1.y * b + p2.y * c + p3.y * d, p0.z * a + p1.z * b + p2.z * c + p3.z * d);
@@ -806,7 +806,14 @@ float stHash3(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); retur
 float stNoise3(vec3 p) { vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(mix(stHash3(i), stHash3(i + vec3(1, 0, 0)), f.x), mix(stHash3(i + vec3(0, 1, 0)), stHash3(i + vec3(1, 1, 0)), f.x), f.y), mix(mix(stHash3(i + vec3(0, 0, 1)), stHash3(i + vec3(1, 0, 1)), f.x), mix(stHash3(i + vec3(0, 1, 1)), stHash3(i + vec3(1, 1, 1)), f.x), f.y), f.z); }
 float stLum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 vec3 stPoster(vec3 c, float n) { return n > 0.5 ? floor(c * n + 0.5) / n : c; }
-vec3 stSat(vec3 c, float s) { float l = stLum(c); return max(vec3(0.0), mix(vec3(l), c, s)); }
+// Saturating past the gamut boundary drives a channel negative, and clamping that to zero does not
+// desaturate the colour, it AMPUTATES it: an already-saturated green loses red and blue outright and
+// comes back as pure (0, G, 0). That is what turned the tree canopy into flat electric green with no
+// midtone. Pull the boost back to the largest factor that keeps every channel non-negative, so the
+// hue survives and only the amount of boost is reduced.
+vec3 stSat(vec3 c, float s) { float l = stLum(c); float m = min(min(c.r, c.g), c.b);
+  float k = (s > 1.0 && m < l) ? min(s, l / max(l - m, 1e-5)) : s;
+  return max(vec3(0.0), vec3(l) + (c - vec3(l)) * k); }
 float stBand(float x, float bands, float soft) { float b = x * bands; float f = fract(b); float s = smoothstep(0.5 - soft, 0.5 + soft, f); return clamp((floor(b) + s) / bands, 0.0, 1.0); }
 float stHatchPat(vec2 fc, float spacing, float dir) { float a = (fc.x + dir * fc.y) / spacing; return step(0.45, fract(a)); }
 float stDotPat(vec2 fc, float spacing, float amt) { vec2 p = mat2(0.7071, 0.7071, -0.7071, 0.7071) * fc; vec2 g = fract(p / spacing) - 0.5; float d = length(g) * 2.0; return 1.0 - smoothstep(amt - 0.15, amt + 0.15, d); }
@@ -928,7 +935,7 @@ const STYLES = [
     mat: { lod: 2.1, normal: 0.32, poster: 0, sat: 1.3, bands: 0, soft: 0.06, ambient: 1, spec: 0.42, hatch: 0, halftone: 0, outline: 0, clay: 0.85, faction: 0, tooth: 0, jitter: 0, rim: 0, rimColor: V(1, 1, 1), tile: 0, flat: 0, fxGain: 1.0, shadowTint: V(0.9, 0.93, 1.02), litTint: V(1.03, 1.0, 0.96) },
     light: { sun: 3.6, sunColor: 0xfff0da, hemi: 0.5, env: 0.95, fill: 0.55, fillColor: 0xa8c8ff },
     atmo: { aerial: 0.85, sunI: 0.95 },
-    post: { tone: 'aces', exposure: 1.12, gtao: true, bloom: [0.3, 0.6, 0.82], edge: { thick: 2.2, depthT: 0.042, normalT: 0.32, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0, fade: 900, coherence: 0.0012 }, halftone: null, tilt: { amount: 3.2, focus: 0.5, width: 0.3 },
+    post: { tone: 'aces', exposure: 1.12, gtao: true, bloom: [0.3, 0.6, 0.82], edge: { thick: 1.0, depthT: 0.012, normalT: 0.32, color: V(0, 0, 0), strength: 1.0, boil: 0, fade: 900, width: 3.0, crease: 0.72, stepAbs: 0.55, taper: 0.55 }, halftone: null, tilt: { amount: 3.2, focus: 0.5, width: 0.3 },
       grade: { sat: 1.16, con: 1.04, vig: 0.28, sharp: 0, ca: 0.004, grain: 0, poster: 0, paper: 0, shadowTint: V(0.98, 0.99, 1.03), highTint: V(1.03, 1.0, 0.97) } },
   },
   {
@@ -944,7 +951,7 @@ const STYLES = [
     mat: { lod: 3.5, normal: 0.15, poster: 0, sat: 1.25, bands: 3, soft: 0.04, ambient: 1.2, spec: 0.8, hatch: 0, halftone: 0, outline: 0.3, clay: 0, faction: 0, shadowTint: V(0.6, 0.66, 0.98), litTint: V(1.03, 1.0, 0.95) },
     light: { sun: 3.0, sunColor: 0xfff6ea, hemi: 0.35, env: 0.45, fill: 0.3, fillColor: 0x8fb8ff },
     atmo: { aerial: 0.5, sunI: 0.9 },
-    post: { tone: 'neutral', exposure: 1.05, gtao: false, bloom: [0.12, 0.4, 0.95], edge: { thick: 1.6, depthT: 0.05, normalT: 0.35, color: V(0.05, 0.04, 0.09), strength: 0.9, boil: 0 , coherence: 0.0012 }, halftone: null, tilt: null,
+    post: { tone: 'neutral', exposure: 1.05, gtao: false, bloom: [0.12, 0.4, 0.95], edge: { thick: 1.0, depthT: 0.015, normalT: 0.35, color: V(0.05, 0.04, 0.09), strength: 0.9, boil: 0 , width: 2.4, crease: 0.7, stepAbs: 0.55, taper: 0.55 }, halftone: null, tilt: null,
       grade: { sat: 1.1, con: 1.08, vig: 0.22, sharp: 0, ca: 0, grain: 0, poster: 0, paper: 0, shadowTint: V(1, 1, 1), highTint: V(1, 1, 1) } },
   },
   {
@@ -952,7 +959,7 @@ const STYLES = [
     mat: { lod: 2.5, normal: 0.3, poster: 0, sat: 1.35, bands: 2, soft: 0.03, ambient: 1.25, spec: 0.6, hatch: 0.3, halftone: 0, outline: 0.3, clay: 0, faction: 1, shadowTint: V(0.55, 0.5, 0.9), litTint: V(1.05, 0.98, 0.92) },
     light: { sun: 3.2, sunColor: 0xffe9d6, hemi: 0.5, env: 0.5, fill: 0.35, fillColor: 0xff4fd8 },
     atmo: { aerial: 0.35, sunI: 0.8 },
-    post: { tone: 'neutral', exposure: 1.0, gtao: false, bloom: [0.22, 0.6, 0.85], edge: { thick: 2.0, depthT: 0.045, normalT: 0.32, color: V(0.09, 0.02, 0.13), strength: 1.0, boil: 1 , coherence: 0.0012 }, halftone: { dots: 0.5, size: 7 }, tilt: null,
+    post: { tone: 'neutral', exposure: 1.0, gtao: false, bloom: [0.22, 0.6, 0.85], edge: { thick: 1.0, depthT: 0.013, normalT: 0.32, color: V(0.09, 0.02, 0.13), strength: 1.0, boil: 1 , width: 3.0, crease: 0.8, stepAbs: 0.55, taper: 0.55 }, halftone: { dots: 0.5, size: 7 }, tilt: null,
       grade: { sat: 1.15, con: 1.12, vig: 0.3, sharp: 0, ca: 0.03, grain: 0.07, poster: 0, paper: 0.35, shadowTint: V(0.95, 0.9, 1.1), highTint: V(1.05, 1.0, 0.95) } },
   },
   {
@@ -960,7 +967,7 @@ const STYLES = [
     mat: { lod: 1.0, normal: 0.8, poster: 0, sat: 1.15, bands: 0, soft: 0.06, ambient: 1, spec: 0.7, hatch: 0.7, halftone: 0, outline: 0.45, clay: 0, faction: 0, shadowTint: V(0.68, 0.7, 0.92), litTint: V(1.04, 1.0, 0.94) },
     light: { sun: 3.4, sunColor: 0xfff2e0, hemi: 0.5, env: 0.9, fill: 0.2, fillColor: 0xa0c0ff },
     atmo: { aerial: 0.45, sunI: 0.9 },
-    post: { tone: 'cineon', exposure: 1.05, gtao: true, bloom: [0.18, 0.5, 0.9], edge: { thick: 2.4, depthT: 0.04, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0 , coherence: 0.0012 }, halftone: null, tilt: null,
+    post: { tone: 'cineon', exposure: 1.05, gtao: true, bloom: [0.18, 0.5, 0.9], edge: { thick: 1.0, depthT: 0.012, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0 , width: 4.2, crease: 0.85, stepAbs: 0.55, taper: 0.55 }, halftone: null, tilt: null,
       grade: { sat: 1.05, con: 1.15, vig: 0.45, sharp: 0.35, ca: 0, grain: 0.05, poster: 0, paper: 0.15, shadowTint: V(0.96, 0.96, 1.02), highTint: V(1.02, 1.0, 0.98) } },
   },
   {
@@ -976,7 +983,7 @@ const STYLES = [
     mat: { lod: 0, normal: 1.2, poster: 0, sat: 1.18, bands: 0, soft: 0.06, ambient: 1, spec: 1.4, hatch: 0.45, halftone: 0, outline: 0.4, clay: 0, faction: 0, shadowTint: V(0.88, 0.9, 1.04), litTint: V(1.03, 1.0, 0.96) },
     light: { sun: 3.9, sunColor: 0xfff6ec, hemi: 0.3, env: 0.85, fill: 0.15, fillColor: 0xa0c0ff },
     atmo: { aerial: 1.2, sunI: 1.0 },
-    post: { tone: 'aces', exposure: 1.08, gtao: true, bloom: [0.24, 0.45, 0.9], edge: { thick: 2.2, depthT: 0.04, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0, fade: 420 , coherence: 0.0012 }, halftone: null, tilt: null,
+    post: { tone: 'aces', exposure: 1.08, gtao: true, bloom: [0.24, 0.45, 0.9], edge: { thick: 1.0, depthT: 0.012, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0, fade: 420 , width: 3.0, crease: 0.7, stepAbs: 0.55, taper: 0.55 }, halftone: null, tilt: null,
       grade: { sat: 1.15, con: 1.12, vig: 0.3, sharp: 0.4, ca: 0, grain: 0.03, poster: 0, paper: 0.1, shadowTint: V(0.96, 0.97, 1.03), highTint: V(1.03, 1.0, 0.97) } },
   },
   {
@@ -985,7 +992,7 @@ const STYLES = [
       ramp: { bands: 4, rampGamma: 1.28, facetJitter: 0.19, shadowLift: 0.24, bandCap: 1.0, shadowBand: 0.16, shadowEdge: 0.30, shadowSoft: 0.30, shadowDepth: 0.30, ambient: 0.30, specStrength: 0.46, specPower: 14, rimStrength: 0.85, rimPower: 3.4, toothStrength: 0.46, toothScale: 0.42, albTint: V(0.40, 0.31, 0.62), albMix: 0.78, palette: derivePalette(0x38e8ff, 0.66, { rimShift: 0.02 }) } },
     light: { sun: 3.0, sunColor: 0xffffff, hemi: 0, env: 0, fill: 0, fillColor: 0xffffff },
     atmo: { aerial: 0.45, sunI: 0.16 },
-    post: { tone: 'aces', exposure: 0.94, gtao: false, bloom: [0.5, 0.6, 0.62], edge: { thick: 1.8, depthT: 0.05, normalT: 0.45, color: V(0.02, 0.012, 0.06), strength: 0.95, boil: 0 , coherence: 0.0012 }, halftone: { dots: 0.62, size: 7 }, tilt: null,
+    post: { tone: 'aces', exposure: 0.94, gtao: false, bloom: [0.5, 0.6, 0.62], edge: { thick: 1.0, depthT: 0.015, normalT: 0.45, color: V(0.02, 0.012, 0.06), strength: 0.95, boil: 0 , width: 2.6, crease: 0.5, stepAbs: 0.55, taper: 0.55 }, halftone: { dots: 0.62, size: 7 }, tilt: null,
       grade: { sat: 1.24, con: 1.10, vig: 0.54, sharp: 0, ca: 0.01, grain: 0.042, poster: 0, paper: 0.20, shadowTint: V(1, 1, 1), highTint: V(1, 1, 1) } },
     world: { detail: 7, grass: false, cards: false },
   },
@@ -995,7 +1002,7 @@ const STYLES = [
       ramp: { bands: 4, rampGamma: 1.24, facetJitter: 0.19, shadowLift: 0.24, bandCap: 0.70, shadowBand: 0.16, shadowEdge: 0.30, shadowSoft: 0.30, shadowDepth: 0.30, ambient: 0.26, specStrength: 0.20, specPower: 90, rimStrength: 0.85, rimPower: 3.4, toothStrength: 0.46, toothScale: 0.42, albTint: V(0.17, 0.27, 0.55), albMix: 0.85, palette: derivePalette(0x38e8ff, 0.66, { rimShift: 0.02, groundL: 0.14 }) } },
     light: { sun: 3.0, sunColor: 0xffffff, hemi: 0, env: 0, fill: 0, fillColor: 0xffffff },
     atmo: { aerial: 0.4, sunI: 0.1 },
-    post: { tone: 'aces', exposure: 0.88, gtao: false, bloom: [0.5, 0.6, 0.62], edge: { thick: 1.8, depthT: 0.05, normalT: 0.45, color: V(0.01, 0.012, 0.05), strength: 0.95, boil: 0 , coherence: 0.0012 }, halftone: { dots: 0.62, size: 7 }, tilt: null,
+    post: { tone: 'aces', exposure: 0.88, gtao: false, bloom: [0.5, 0.6, 0.62], edge: { thick: 1.0, depthT: 0.015, normalT: 0.45, color: V(0.01, 0.012, 0.05), strength: 0.95, boil: 0 , width: 2.6, crease: 0.5, stepAbs: 0.55, taper: 0.55 }, halftone: { dots: 0.62, size: 7 }, tilt: null,
       grade: { sat: 1.24, con: 1.10, vig: 0.54, sharp: 0, ca: 0.008, grain: 0.042, poster: 0, paper: 0.20, shadowTint: V(1, 1, 1), highTint: V(1, 1, 1) } },
     world: { detail: 7, grass: false, cards: false },
   },
@@ -1013,7 +1020,7 @@ const STYLES = [
     mat: { lod: 1.2, normal: 0.6, poster: 0, sat: 1.3, bands: 0, soft: 0.06, ambient: 1, spec: 0.45, hatch: 0, halftone: 0, outline: 0, clay: 1, faction: 0, tooth: 0, jitter: 0, rim: 0, rimColor: V(1, 1, 1), tile: 0, flat: 0, fxGain: 0.9, shadowTint: V(0.9, 0.92, 1.0), litTint: V(1.03, 1.0, 0.96) },
     light: { sun: 3.8, sunColor: 0xfff0d8, hemi: 0.55, env: 0.95, fill: 0.62, fillColor: 0xa8c8ff },
     atmo: { aerial: 0.15, sunI: 0.7 },
-    post: { tone: 'aces', exposure: 1.18, gtao: true, bloom: [0.14, 0.5, 0.9], edge: { thick: 2.4, depthT: 0.04, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0 , coherence: 0.0012 }, halftone: null, tilt: { amount: 5, focus: 0.5, width: 0.2 },
+    post: { tone: 'aces', exposure: 1.18, gtao: true, bloom: [0.14, 0.5, 0.9], edge: { thick: 1.0, depthT: 0.012, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0 , width: 4.2, crease: 0.85, stepAbs: 0.55, taper: 0.55 }, halftone: null, tilt: { amount: 5, focus: 0.5, width: 0.2 },
       grade: { sat: 1.14, con: 1.06, vig: 0.3, sharp: 0.2, ca: 0.004, grain: 0.02, poster: 0, paper: 0, shadowTint: V(1.0, 1.0, 1.02), highTint: V(1.03, 1.0, 0.97) } },
   },
   {
@@ -1072,6 +1079,11 @@ class GrassField {
     const U = this.uniforms;
     mat.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, U);
+      // Opt grass out of the ink pass. Depth alone cannot tell a 1.3-unit grass tuft from a 1.4-unit
+      // bot, so the outline pass reads this: alpha 0 means "not something to draw a line around".
+      // Nothing else in the scene writes anything but 1, so the channel is free for it.
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <opaque_fragment>', '#include <opaque_fragment>\ngl_FragColor.a = 0.0;');
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nattribute vec3 aPos; attribute vec3 aInfo; uniform float uTime; uniform vec3 uCamPos; uniform vec3 uCenter; uniform float uFade; varying float vTint;')
         .replace('#include <beginnormal_vertex>', 'vec3 objectNormal = normalize(aPos);\n#ifdef USE_TANGENT\nvec3 objectTangent = vec3( tangent.xyz );\n#endif')
@@ -1123,7 +1135,7 @@ const __mod_planet = (() => {
 
 
 const { clamp, lerp, smoothstep, mulberry32, Simplex, MinHeap, angleBetween, tangentToward, moveOnSphere, rotateTangent, anyTangent, frameQuat, TAU } = __mod_util;
-const { detailTexture, cloudTexture, cloudNormalTexture, waterNormalTexture, leafClusterTexture, coniferTexture } = __mod_textures;
+const { detailTexture, cloudTexture, cloudNormalTexture, waterNormalTexture } = __mod_textures;
 const { getTextureSet } = __mod_assets;
 const { STYLE_U, STYLE_GLSL, STYLE_LIGHT_GLSL } = __mod_style;
 
@@ -1800,27 +1812,89 @@ class Planet {
     const colorize = (g, c) => { const n = g.getAttribute('position').count; const col = new Float32Array(n * 3); for (let i = 0; i < n; i++) { col[i * 3] = c[0]; col[i * 3 + 1] = c[1]; col[i * 3 + 2] = c[2]; } g.setAttribute('color', new THREE.BufferAttribute(col, 3)); return g; };
     const rockGeo = () => { const g = lumpy(new THREE.IcosahedronGeometry(1, 2), 0.42); g.deleteAttribute('uv'); g.translate(0, 0.35, 0); const rc = RAMPS[b.palette].rock; return colorize(g, [rc[0] * 1.15, rc[1] * 1.15, rc[2] * 1.15]); };
     if (b.props === 'earth') {
-      const trunk = colorize(new THREE.CylinderGeometry(0.14, 0.22, 1.5, 5).toNonIndexed(), [0.28, 0.18, 0.1]); trunk.deleteAttribute('uv'); trunk.translate(0, 0.75, 0);
-      const cross = new THREE.BufferGeometry(); { const pos = [], uv = [], nrm = []; const hw = 1.35, y0 = 0.25, y1 = 5.6; for (let i = 0; i < 3; i++) { const a = i * Math.PI / 3; const dx = Math.cos(a) * hw, dz = Math.sin(a) * hw; const q = [[-dx, y0, -dz, 0, 0], [dx, y0, dz, 0.5, 0], [dx, y1, dz, 0.5, 1], [-dx, y0, -dz, 0, 0], [dx, y1, dz, 0.5, 1], [-dx, y1, -dz, 0, 1]]; for (const [x, y, z, u, v] of q) { pos.push(x, y, z); uv.push(u, v); const nn = new THREE.Vector3(x * 0.5, 0.85, z * 0.5).normalize(); nrm.push(nn.x, nn.y, nn.z); } }
-        // Horizontal cards let the tree read from directly above. A single wide one at mid-height
-        // looked like a disc skewered on the trunk, so use a few small ones climbing to the crown.
-        for (const [t, hw2] of [[0.42, 0.95], [0.66, 0.68], [0.88, 0.42]]) { const yt = y0 + (y1 - y0) * t; const ca = Math.cos(t * 5.1), sa = Math.sin(t * 5.1);
-          const corner = (sx, sz) => [ (sx * hw2) * ca - (sz * hw2) * sa, yt, (sx * hw2) * sa + (sz * hw2) * ca ];
-          const q = [[-1, -1, 0.5, 0], [1, -1, 1, 0], [1, 1, 1, 1], [-1, -1, 0.5, 0], [1, 1, 1, 1], [-1, 1, 0.5, 1]];
-          for (const [sx, sz, u, v] of q) { const c = corner(sx, sz); pos.push(c[0], c[1], c[2]); uv.push(u, v); nrm.push(0, 1, 0); } } cross.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); cross.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); cross.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); }
+      // Trees are built as SOLID geometry rather than alpha-tested cards. Cards were the source of
+      // every complaint about them: a card's flat constant normal has no shading gradient and three
+      // negates it on the back face, so the horizontal ones rendered as black discs skewered on the
+      // trunk; the needle bitmap is thousands of 1-2px strokes that a hard alphaTest chops into
+      // salt-and-pepper; and at any distance those strokes break into isolated specks that the ink
+      // pass then draws a black outline around, scattering ticks across the hillside. Solid forms
+      // have a continuous normal, hold a midtone, cannot fringe, and give the ink one clean
+      // silhouette to follow — which is the whole point of the house style.
+      const TAU2 = Math.PI * 2;
+      /** one ridged conical skirt of boughs; the rim zig-zags so the silhouette reads as needles */
+      const skirt = (out, y0, h, r, seg, droop, col, phase) => {
+        const apex = [0, y0 + h, 0];
+        for (let i = 0; i < seg; i++) {
+          const a0 = phase + i / seg * TAU2, a1 = phase + (i + 1) / seg * TAU2;
+          const r0 = r * (0.84 + 0.16 * ((i * 7 % 5) / 4)), r1 = r * (0.84 + 0.16 * (((i + 1) * 7 % 5) / 4));
+          const y_0 = y0 - droop * (i % 2), y_1 = y0 - droop * ((i + 1) % 2);
+          const d0 = [Math.cos(a0) * r0, y_0, Math.sin(a0) * r0];
+          const d1 = [Math.cos(a1) * r1, y_1, Math.sin(a1) * r1];
+          const ux = d0[0] - apex[0], uy = d0[1] - apex[1], uz = d0[2] - apex[2];
+          const vx = d1[0] - apex[0], vy = d1[1] - apex[1], vz = d1[2] - apex[2];
+          let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+          const L = Math.hypot(nx, ny, nz) || 1; nx /= L; ny /= L; nz /= L;
+          // Facet-to-facet value variation is what makes it read as hand-painted rather than moulded.
+          const sh = 0.88 + 0.12 * ((i * 3 % 4) / 3);
+          for (const v of [apex, d0, d1]) { out.pos.push(v[0], v[1], v[2]); out.nrm.push(nx, ny, nz); out.col.push(col[0] * sh, col[1] * sh, col[2] * sh); }
+        }
+      };
+      const geoFrom = (out) => { const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(out.pos, 3));
+        g.setAttribute('normal', new THREE.Float32BufferAttribute(out.nrm, 3));
+        g.setAttribute('color', new THREE.Float32BufferAttribute(out.col, 3)); return g; };
+      // Needle green in LINEAR reflectance, matching the convention RAMPS and the other props use.
+      // Every channel stays well clear of luminance*(1 - 1/1.3), below which the style's albedo
+      // saturation would drive it negative and clamp it to zero — which is what turned the old
+      // canopy into flat electric green with no red or blue left in it at all.
+      const NEEDLE = [[0.170, 0.255, 0.120], [0.189, 0.286, 0.132], [0.208, 0.317, 0.143], [0.227, 0.348, 0.155], [0.248, 0.380, 0.168]];
+      const coniferGeo = () => {
+        const out = { pos: [], nrm: [], col: [] };
+        const LAY = [[0.44, 1.52, 1.32, 0.00], [1.44, 1.42, 1.13, 0.55], [2.18, 1.38, 0.92, 1.10], [2.88, 1.34, 0.70, 1.65], [3.54, 1.40, 0.46, 2.20]];
+        LAY.forEach(([y0, h, r, ph], i) => skirt(out, y0, h, r, 11, 0.15, NEEDLE[i], ph));
+        const t = colorize(new THREE.CylinderGeometry(0.085, 0.155, 1.35, 6).toNonIndexed(), [0.150, 0.098, 0.062]);
+        t.deleteAttribute('uv'); t.translate(0, 0.675, 0);
+        return mergeGeometries([t, geoFrom(out)], false);
+      };
       const forest = (d) => this.noise.fbm(d.x * 5 + 3, d.y * 5, d.z * 5, 3);
-      const coneTree = () => { const c1 = colorize(new THREE.ConeGeometry(1.15, 2.2, 6).toNonIndexed(), [0.1, 0.3, 0.12]); c1.deleteAttribute('uv'); c1.translate(0, 2.0, 0);
-        const c2 = colorize(new THREE.ConeGeometry(0.9, 2.0, 6).toNonIndexed(), [0.13, 0.36, 0.14]); c2.deleteAttribute('uv'); c2.translate(0, 3.1, 0);
-        const c3 = colorize(new THREE.ConeGeometry(0.6, 1.7, 6).toNonIndexed(), [0.16, 0.42, 0.16]); c3.deleteAttribute('uv'); c3.translate(0, 4.2, 0);
-        return mergeGeometries([trunk.clone(), c1, c2, c3], false); };
-      kinds.push(PROP_CARDS ? { geo: trunk, canopy: cross, canopyTex: 'conifer', bark: true, count: Math.round(4200 * area), tries: 60, test: (e, s, d) => e > 1.6 && e < 13 && s < 0.4 && forest(d) > 0.04, scale: [0.7, 1.6], stretch: 1, tree: true } : { geo: coneTree(), count: Math.round(4200 * area), tries: 60, test: (e, s, d) => e > 1.6 && e < 13 && s < 0.4 && forest(d) > 0.04, scale: [0.7, 1.6], stretch: 1, tree: true });
-      const trunk2 = colorize(new THREE.CylinderGeometry(0.16, 0.3, 2.6, 7).toNonIndexed(), [0.3, 0.2, 0.12]); trunk2.deleteAttribute('uv'); trunk2.translate(0, 1.3, 0);
-      const branches = []; for (let i = 0; i < 4; i++) { const br = colorize(new THREE.CylinderGeometry(0.06, 0.12, 1.6, 5).toNonIndexed(), [0.28, 0.19, 0.11]); br.deleteAttribute('uv'); br.translate(0, 0.8, 0); br.rotateZ(0.7 + rng() * 0.5); br.rotateY(i * Math.PI / 2 + rng() * 0.6); br.translate(0, 2.2 + rng() * 0.5, 0); branches.push(br); }
-      const cards = new THREE.BufferGeometry(); { const pos = [], uv = [], nrm = []; for (let i = 0; i < 14; i++) { const cx = (rng() - 0.5) * 1.5, cy = 3.2 + (rng() - 0.5) * 1.3, cz = (rng() - 0.5) * 1.5; const sz = 1.3 + rng() * 0.7; const ax = rng() * Math.PI, ay = rng() * Math.PI * 2; const u = new THREE.Vector3(Math.cos(ay), 0, Math.sin(ay)); const vv = new THREE.Vector3(0, Math.cos(ax), Math.sin(ax)); const nn = new THREE.Vector3(cx, cy - 3.1 + 0.8, cz).normalize(); const corners = [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]]; for (const [a, b2] of corners) { pos.push(cx + (u.x * a + vv.x * b2) * sz / 2, cy + (u.y * a + vv.y * b2) * sz / 2, cz + (u.z * a + vv.z * b2) * sz / 2); uv.push(a * 0.5 + 0.5, b2 * 0.5 + 0.5); nrm.push(nn.x, nn.y, nn.z); } } cards.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); cards.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); cards.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); }
-      const blobCanopy = () => { const cn = colorize(lumpy(new THREE.IcosahedronGeometry(1.5, 1), 0.5), [0.18, 0.4, 0.14]); cn.deleteAttribute('uv'); cn.translate(0, 3.2, 0); return mergeGeometries([trunk2.clone(), cn], false); };
-      kinds.push(PROP_CARDS ? { geo: mergeGeometries([trunk2, ...branches], false), canopy: cards, bark: true, count: Math.round(2600 * area), tries: 40, test: (e, s, d) => e > 1.4 && e < 10 && s < 0.3 && forest(d) > -0.04, scale: [0.8, 1.5], stretch: 1, tree: true } : { geo: blobCanopy(), count: Math.round(2600 * area), tries: 40, test: (e, s, d) => e > 1.4 && e < 10 && s < 0.3 && forest(d) > -0.04, scale: [0.8, 1.5], stretch: 1, tree: true });
-      const bush = colorize(lumpy(new THREE.IcosahedronGeometry(0.8, 1), 0.3), [0.2, 0.38, 0.13]); bush.deleteAttribute('uv'); bush.translate(0, 0.45, 0);
-      kinds.push({ geo: bush, count: Math.round(2400 * area), test: (e, s) => e > 1.2 && e < 11 && s < 0.45, scale: [0.6, 1.4], stretch: 0.8, tree: true });
+      // A second, decorrelated field. The two species used to share one mask with different
+      // thresholds, so broadleaf ground was a strict superset of conifer ground and every stand was
+      // the same mixed clutter. Separate fields give conifer ridges, broadleaf hollows, and gaps.
+      const grove = (d) => this.noise.fbm(d.x * 5 + 41.7, d.y * 5 + 17.3, d.z * 5 + 63.1, 3);
+      // Ramp the placement PROBABILITY across the mask instead of switching on a hard threshold, so a
+      // stand thins out at its edge and leaves real clearings rather than ending on a contour line.
+      const ramp = (x, a, b) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+      kinds.push({ geo: coniferGeo(), count: Math.round(11000 * area), tries: 40,
+        test: (e, s, d) => e > 1.6 && e < 13 && s < 0.4 && rng() < ramp(forest(d), 0.00, 0.24) * (1 - ramp(grove(d), 0.02, 0.18)),
+        scale: [0.75, 1.35], stretch: 0.9, tree: true });
+
+      // Broadleaf: an opaque lumpy crown so the ink gets one silhouette, with a few outward-facing
+      // leaf clumps breaking the outline. The old version was 14 quads on non-orthogonal axes, which
+      // sheared them an average of 26 degrees and collapsed nearly a tenth of them to slivers.
+      const trunk2 = colorize(new THREE.CylinderGeometry(0.14, 0.26, 2.6, 7).toNonIndexed(), [0.160, 0.105, 0.066]); trunk2.deleteAttribute('uv'); trunk2.translate(0, 1.3, 0);
+      const branches = []; for (let i = 0; i < 3; i++) {
+        // Kept short: at 1.6 long these poked well clear of the crown and read as brown spears.
+        const br = colorize(new THREE.CylinderGeometry(0.06, 0.11, 0.95, 5).toNonIndexed(), [0.155, 0.102, 0.064]);
+        br.deleteAttribute('uv'); br.translate(0, 0.45, 0); br.rotateZ(0.55 + rng() * 0.35); br.rotateY(i * 2.0944 + rng() * 0.6); br.translate(0, 2.35 + rng() * 0.35, 0); branches.push(br);
+      }
+      const LEAF = [[0.185, 0.272, 0.115], [0.212, 0.312, 0.130], [0.240, 0.352, 0.146]];
+      const crownGeo = () => {
+        const parts = [];
+        const blob = (r, x, y, z, c, amt, det = 1) => { const g = colorize(lumpy(new THREE.IcosahedronGeometry(r, det), amt), c); g.deleteAttribute('uv'); g.scale(1, 0.82, 1); g.translate(x, y, z); return g; };
+        parts.push(blob(1.28, 0, 3.15, 0, LEAF[1], 0.30));
+        parts.push(blob(0.86, 0.82, 3.62, -0.30, LEAF[2], 0.12, 0));
+        parts.push(blob(0.80, -0.72, 3.48, 0.46, LEAF[0], 0.12, 0));
+        parts.push(blob(0.72, 0.18, 2.62, 0.78, LEAF[0], 0.11, 0));
+        parts.push(blob(0.64, -0.30, 2.78, -0.76, LEAF[1], 0.11, 0));
+        return mergeGeometries(parts, false);
+      };
+      kinds.push({ geo: mergeGeometries([trunk2, ...branches, crownGeo()], false), count: Math.round(4200 * area), tries: 40,
+        test: (e, s, d) => e > 1.4 && e < 10 && s < 0.3 && rng() < ramp(grove(d), 0.00, 0.24) * (1 - ramp(forest(d), 0.02, 0.18)),
+        scale: [0.80, 1.30], stretch: 0.9, tree: true });
+
+      // Bushes belong in the clearings between the two canopies, not under them.
+      const bush = colorize(lumpy(new THREE.IcosahedronGeometry(0.8, 1), 0.20), [0.225, 0.310, 0.145]); bush.deleteAttribute('uv'); bush.translate(0, 0.42, 0);
+      kinds.push({ geo: bush, count: Math.round(3200 * area), tries: 24, test: (e, s, d) => e > 1.2 && e < 11 && s < 0.45 && rng() < 1 - ramp(Math.max(forest(d), grove(d)), 0.0, 0.20), scale: [0.55, 1.15], stretch: 0.75, tree: true });
       kinds.push({ geo: rockGeo(), count: Math.round(1200 * area), test: (e, s) => e > 1.0 && (s > 0.25 || rng() < 0.2), scale: [0.6, 3.2], stretch: 0.7, stone: true });
     } else if (b.props === 'ice') {
       const cr = colorize(new THREE.ConeGeometry(0.45, 3.2, 6).toNonIndexed(), [0.6, 0.82, 1.0]); cr.deleteAttribute('uv'); cr.translate(0, 1.4, 0);
@@ -1845,8 +1919,9 @@ class Planet {
       if (k.stone) injectStone(mat, tex[1]); else if (k.bark) injectStone(mat, getTextureSet('bark'));
       const pk = k.stone ? 'props_stone' : (k.bark ? 'props_bark' : 'props'); injectSun(mat, this.uniforms.uSunView, pk); injectFog(mat, this.uniforms, pk + '_sun');
       const mesh = new THREE.InstancedMesh(k.geo, mat, k.count); let n = 0; let tries = 0;
-      let canopyMesh = null;
-      if (k.canopy) { const lm = new THREE.MeshStandardMaterial({ map: k.canopyTex === 'conifer' ? coniferTexture() : leafClusterTexture(), alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.85, metalness: 0 }); injectSun(lm, this.uniforms.uSunView, 'leaves'); injectFog(lm, this.uniforms, 'leaves_sun'); canopyMesh = new THREE.InstancedMesh(k.canopy, lm, k.count); canopyMesh.layers.set(1); }
+      // Every tree in the world is solid geometry now, so nothing asks for an alpha-card canopy and
+      // the second instanced mesh that used to accompany each kind is gone with it.
+      const canopyMesh = null;
       const dir = new THREE.Vector3(), tan = new THREE.Vector3(), pos = new THREE.Vector3();
       while (n < k.count && tries++ < k.count * (k.tries || 8)) {
         const i = Math.floor(rng() * nav.count); this.nodeDir(i, dir);
@@ -1860,7 +1935,15 @@ class Planet {
         const h = this.heightAt(dir); pos.copy(dir).multiplyScalar(h - 0.15);
         rotateTangent(dir, anyTangent(dir, _v1), rng() * TAU, tan); frameQuat(dir, tan, _q);
         const sc = k.scale[0] + rng() * (k.scale[1] - k.scale[0]); _s.set(sc, sc * (k.stretch + rng() * 0.4), sc); _m.compose(pos, _q, _s); mesh.setMatrixAt(n, _m); if (canopyMesh) canopyMesh.setMatrixAt(n, _m);
-        const v = 0.8 + rng() * 0.4; const tc = k.tree ? new THREE.Color(0.75 + rng() * 0.5, 0.85 + rng() * 0.3, 0.7 + rng() * 0.4) : new THREE.Color(v, v * (0.95 + rng() * 0.1), v); mesh.setColorAt(n, tc); if (canopyMesh) canopyMesh.setColorAt(n, tc); n++;
+        // These are LINEAR multipliers. The old tree range reached 1.25 on red and averaged a
+        // systematic blue cut, so it both brightened past the material's own albedo and skewed the
+        // whole canopy yellow-green. Keep every channel at or under 1 and carry the variety as a
+        // small warm/cool swing instead, which is what reads as individual trees rather than noise.
+        const v = 0.82 + rng() * 0.18;
+        const w = rng();
+        const tc = k.tree ? new THREE.Color(0.80 + w * 0.20, 0.86 + rng() * 0.14, 0.78 + (1 - w) * 0.20)
+                          : new THREE.Color(v, v * (0.96 + rng() * 0.08), v);
+        mesh.setColorAt(n, tc); if (canopyMesh) canopyMesh.setColorAt(n, tc); n++;
       }
       mesh.count = n; mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       mesh.castShadow = !!k.tree; mesh.receiveShadow = true; mesh.frustumCulled = true; k.geo.computeBoundingSphere(); mesh.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), R + 40);
@@ -4617,35 +4700,75 @@ camera.layers.enable(1); sun.shadow.camera.layers.enable(1);
 const QUAD_VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
 // ink / outline pass: depth + reconstructed-normal edges from the scene depth texture
 const edgePass = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uNear: { value: 1 }, uFar: { value: 1000 }, uProjInv: { value: new THREE.Matrix4() }, uThick: { value: 1.5 }, uDepthT: { value: 0.05 }, uNormalT: { value: 0.35 }, uStrength: { value: 1 }, uBoil: { value: 0 }, uFade: { value: 0 }, uTime: { value: 0 }, uCoh: { value: 0 }, uColor: { value: new THREE.Vector3(0, 0, 0) } },
+  uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uNear: { value: 1 }, uFar: { value: 1000 }, uProjInv: { value: new THREE.Matrix4() }, uThick: { value: 1.5 }, uDepthT: { value: 0.05 }, uNormalT: { value: 0.35 }, uStrength: { value: 1 }, uBoil: { value: 0 }, uFade: { value: 0 }, uTime: { value: 0 }, uWidth: { value: 3 }, uStepAbs: { value: 0.55 }, uCrease: { value: 0.55 }, uTaper: { value: 0.55 }, uColor: { value: new THREE.Vector3(0, 0, 0) } },
   vertexShader: QUAD_VS,
-  fragmentShader: `uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform vec2 uTexel; uniform float uNear, uFar, uThick, uDepthT, uNormalT, uStrength, uBoil, uFade, uTime, uCoh; uniform vec3 uColor; uniform mat4 uProjInv; varying vec2 vUv;
+  // Ink model. The old one took the second derivative of depth, which is a HAIRLINE: it marks only
+  // the one pixel where curvature peaks, so the line came out thin, broken and mushy, and widening it
+  // via the sampling radius only made the detector fire on coarser clutter. Instead ask, for every
+  // pixel, "is anything NEARER than me within uWidth pixels?" — the minimum depth over a small disc.
+  // That paints a solid, even band of exactly uWidth on the far side of every silhouette, which is how
+  // a pen actually behaves, and it cannot dash because a minimum over a disc varies continuously.
+  // Requiring the step to clear an absolute world-space size is also a far better clutter filter than
+  // the screen-space one it replaces: grass stands a few centimetres proud of the ground and never
+  // qualifies, while a tree or a tank always does.
+  fragmentShader: `uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform vec2 uTexel; uniform float uNear, uFar, uThick, uDepthT, uNormalT, uStrength, uBoil, uFade, uTime, uWidth, uStepAbs, uCrease, uTaper; uniform vec3 uColor; uniform mat4 uProjInv; varying vec2 vUv;
     float lin(float d) { float z = d * 2.0 - 1.0; return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }
     vec3 vpos(vec2 uv, float d) { vec4 p = uProjInv * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); return p.xyz / p.w; }
     void main(){
       vec2 uv = vUv; vec4 col = texture2D(tDiffuse, vUv);
       if (uBoil > 0.0) { float t = floor(uTime * 8.0); uv += (vec2(fract(sin(t * 12.99) * 43758.5), fract(sin(t * 78.23) * 43758.5)) - 0.5) * uTexel * 2.0 * uBoil; }
-      vec2 o = uTexel * uThick; float d0 = texture2D(tDepth, uv).r; float z0 = lin(d0);
-      float dL = texture2D(tDepth, uv - vec2(o.x, 0.0)).r, dR = texture2D(tDepth, uv + vec2(o.x, 0.0)).r, dD = texture2D(tDepth, uv - vec2(0.0, o.y)).r, dU = texture2D(tDepth, uv + vec2(0.0, o.y)).r;
-      float zL = lin(dL), zR = lin(dR), zD = lin(dD), zU = lin(dU);
-      float zmin = min(min(zL, zR), min(zD, zU)); float zn = min(z0, zmin);
-      float dz = max(abs(zL + zR - 2.0 * z0), abs(zD + zU - 2.0 * z0)) / zn;
-      float far = max(max(abs(zL - z0), abs(zR - z0)), max(abs(zD - z0), abs(zU - z0))) / zn;
-      float eDepth = smoothstep(uDepthT, uDepthT * 2.5, max(dz, far * 0.35));
-      vec3 P = vpos(uv, d0); vec3 Px = vpos(uv + vec2(o.x, 0.0), dR) - P; vec3 Py = vpos(uv + vec2(0.0, o.y), dU) - P; vec3 n0 = normalize(cross(Px, Py));
-      vec3 PL = vpos(uv - vec2(o.x, 0.0), dL); vec3 PD = vpos(uv - vec2(0.0, o.y), dD); vec3 n1 = normalize(cross(P - PL, Py)); vec3 n2 = normalize(cross(Px, P - PD));
+      float d0 = texture2D(tDepth, uv).r; float z0 = lin(d0);
+      // The sky is left in deliberately: at depth 1.0 it reads as maximally far, so sky pixels beside a
+      // silhouette take the ink and every object gets a proper outline against it.
+      // Constant screen-space width. A distance taper was tried and is wrong here: this detector inks
+      // the pixel whose NEIGHBOUR is nearer, so an object's outline is painted on the background
+      // behind it — and against the sky that background is the far plane at 80000, which pinned the
+      // taper to its minimum and drew every silhouette against the sky at 55% width, at any range.
+      // The opacity fade below already does the distance dissolve, and it keys off the near surface.
+      float wpx = uWidth;
+      // Twelve fixed rays make the isoline around a small feature a visible dodecagon and let anything
+      // thinner than the ray spacing fall between them and dash. Rotating the ring by a quarter step
+      // across a 2x2 pixel quad gives 48 effective angles for no extra fetches; the residual 1px
+      // stipple is absorbed by the multisampled target.
+      float ph = (mod(floor(gl_FragCoord.x), 2.0) + 2.0 * mod(floor(gl_FragCoord.y), 2.0)) * 0.1308997;
+      // A neighbour only earns a line if it is ink-eligible. Grass writes alpha 0 (see foliage.js) and
+      // so can never lower zmin, which is what keeps a hillside of tufts from turning to black stipple
+      // while a bot of the very same height still gets a full outline.
+      float zmin = z0;
+      for (int i = 0; i < 12; i++) {
+        vec2 dir = vec2(cos(float(i) * 0.5235988 + ph), sin(float(i) * 0.5235988 + ph));
+        vec2 o1 = dir * uTexel * wpx, o2 = o1 * 0.55;
+        float z1 = lin(texture2D(tDepth, uv + o1).r), a1 = texture2D(tDiffuse, uv + o1).a;
+        float z2 = lin(texture2D(tDepth, uv + o2).r), a2 = texture2D(tDiffuse, uv + o2).a;
+        zmin = min(zmin, mix(z0, z1, step(0.5, a1)));
+        zmin = min(zmin, mix(z0, z2, step(0.5, a2)));
+      }
+      // Absolute floor rejects near-field clutter; the relative term keeps the line scale-free at range.
+      float need = max(uStepAbs, uDepthT * z0);
+      float eSil = smoothstep(need, need * 1.22, z0 - zmin);
+      // Interior creases stay thin and separately controlled, the way ink is lighter inside a shape
+      // than around its edge.
+      vec2 o = uTexel * uThick;
+      float dL = texture2D(tDepth, uv - vec2(o.x, 0.0)).r, dR = texture2D(tDepth, uv + vec2(o.x, 0.0)).r;
+      float dD = texture2D(tDepth, uv - vec2(0.0, o.y)).r, dU = texture2D(tDepth, uv + vec2(0.0, o.y)).r;
+      vec3 P = vpos(uv, d0); vec3 Px = vpos(uv + vec2(o.x, 0.0), dR) - P; vec3 Py = vpos(uv + vec2(0.0, o.y), dU) - P;
+      vec3 n0 = normalize(cross(Px, Py));
+      vec3 PL = vpos(uv - vec2(o.x, 0.0), dL); vec3 PD = vpos(uv - vec2(0.0, o.y), dD);
+      vec3 n1 = normalize(cross(P - PL, Py)); vec3 n2 = normalize(cross(Px, P - PD));
       float eN = smoothstep(uNormalT, uNormalT + 0.3, max(1.0 - dot(n0, n1), 1.0 - dot(n0, n2))) * (1.0 - step(0.9999, d0));
-      // Grass cards are thin slivers, so the outline detector drew a black ring around every blade and
-      // the ground turned to crawling stipple. A real silhouette is locally a LINE: it breaks depth
-      // along one screen axis while the perpendicular axis stays smooth. Clutter breaks both at once.
-      // Taking the smaller of the two axis gradients therefore reads near zero on lines and high in
-      // foliage, which separates the ink we want from the noise we do not.
-      float ax = abs(zL - zR) / zn, ay = abs(zD - zU) / zn;
-      float coh = uCoh > 0.0 ? 1.0 - smoothstep(uCoh, uCoh * 3.0, min(ax, ay)) : 1.0;
-      float e = clamp(max(eDepth, eN) * uStrength * coh, 0.0, 1.0);
+      float zn = min(z0, zmin);
+      // The screen-space clutter heuristic that used to live here is gone. It was a proxy for "this is
+      // foliage, do not ink it", and it guessed wrong often enough to chew real silhouettes into
+      // dashes. Foliage now says so itself through the alpha channel, which is exact.
+      // Note the eligibility test is only on the NEIGHBOUR, never on the pixel being drawn: the band
+      // lands on whatever is behind an object, and that is often grass. Gating the centre pixel too
+      // would chew a unit's outline into dashes wherever it happens to stand in long grass.
+      float e = clamp(max(eSil, eN * uCrease) * uStrength, 0.0, 1.0);
       if (uFade > 0.0) e *= exp(-zn / uFade); // ink dissolves into the haze with distance
       gl_FragColor = vec4(mix(col.rgb, uColor, e), col.a); }` });
 edgePass.enabled = false; composer.insertPass(edgePass, 1);
+// Ink width is authored in CSS pixels; uTexel is in device pixels, so it is rescaled on every resize.
+let edgeWidthCss = 3;
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.3, 0.5, 0.92); composer.addPass(bloom);
 const grade = new ShaderPass({
   uniforms: { tDiffuse: { value: null }, uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uSat: { value: 1.08 }, uCon: { value: 1.06 }, uVig: { value: 0.4 }, uSharp: { value: 0.22 }, uCA: { value: 0.006 }, uGrain: { value: 0.03 }, uPoster: { value: 0 }, uPaper: { value: 0 }, uDots: { value: 0 }, uDotSize: { value: 6 }, uTime: { value: 0 }, uShadowTint: { value: new THREE.Vector3(1, 1, 1) }, uHighTint: { value: new THREE.Vector3(1, 1, 1) } },
@@ -4678,7 +4801,7 @@ app.setStyle = (id) => {
   applyStyleUniforms(st.mat); STYLE_U.uStKey.value = st.light.sun / Math.PI;
   sun.intensity = st.light.sun; sun.color.set(st.light.sunColor); hemi.intensity = st.light.hemi; fill.intensity = st.light.fill; fill.color.set(st.light.fillColor); scene.environmentIntensity = st.light.env;
   const p = st.post; app.bloomBase = p.bloom[0]; bloom.strength = p.bloom[0]; bloom.radius = p.bloom[1]; bloom.threshold = p.bloom[2];
-  edgePass.enabled = !!p.edge; if (p.edge) { const u = edgePass.uniforms; u.uThick.value = p.edge.thick; u.uDepthT.value = p.edge.depthT; u.uNormalT.value = p.edge.normalT; u.uStrength.value = p.edge.strength; u.uBoil.value = p.edge.boil; u.uFade.value = p.edge.fade || 0; u.uCoh.value = p.edge.coherence || 0; u.uColor.value.set(...p.edge.color); }
+  edgePass.enabled = !!p.edge; if (p.edge) { const u = edgePass.uniforms; u.uThick.value = p.edge.thick; u.uDepthT.value = p.edge.depthT; u.uNormalT.value = p.edge.normalT; u.uStrength.value = p.edge.strength; u.uBoil.value = p.edge.boil; u.uFade.value = p.edge.fade || 0; u.uStepAbs.value = p.edge.stepAbs !== undefined ? p.edge.stepAbs : 0.55; u.uCrease.value = p.edge.crease !== undefined ? p.edge.crease : 0.55; u.uTaper.value = p.edge.taper !== undefined ? p.edge.taper : 0.55; edgeWidthCss = p.edge.width !== undefined ? p.edge.width : 3; u.uWidth.value = edgeWidthCss * renderer.getPixelRatio(); u.uColor.value.set(...p.edge.color); }
   tiltH.enabled = tiltV.enabled = !!p.tilt; if (p.tilt) for (const t of [tiltH, tiltV]) { t.uniforms.uAmount.value = p.tilt.amount; t.uniforms.uFocus.value = p.tilt.focus; t.uniforms.uWidth.value = p.tilt.width; }
   const g = grade.uniforms, gr = p.grade; g.uSat.value = gr.sat; g.uCon.value = gr.con; g.uVig.value = gr.vig; g.uSharp.value = gr.sharp; g.uCA.value = gr.ca; g.uGrain.value = gr.grain; g.uPoster.value = gr.poster; g.uPaper.value = gr.paper; g.uDots.value = p.halftone ? p.halftone.dots : 0; g.uDotSize.value = p.halftone ? p.halftone.size : 6; g.uShadowTint.value.set(...gr.shadowTint); g.uHighTint.value.set(...gr.highTint);
   renderer.toneMapping = TONE[p.tone] || THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = p.exposure;
@@ -4797,6 +4920,7 @@ function resize() {
   const tx = 1 / (w * pr), ty = 1 / (h * pr);
   grade.uniforms.uTexel.value.set(tx, ty);
   edgePass.uniforms.uTexel.value.set(tx, ty);
+  edgePass.uniforms.uWidth.value = edgeWidthCss * pr;
   tiltH.uniforms.uTexel.value.set(tx, ty);
   tiltV.uniforms.uTexel.value.set(tx, ty);
   // Ambient occlusion is by far the most expensive pass and its result is low frequency, so it runs

@@ -4,6 +4,51 @@ Standalone builds of each version live in `versions/` (double-click to play; nee
 The published artifact keeps its own version picker as well (labels match the entries below).
 The in-game menu shows the version number under the title.
 
+## v3.8.0 — 2026-09-04 — Trees are solid again, and the ink is a real pen
+
+The trees were rebuilt from scratch and the outline pass was replaced. Both were measured rather than
+guessed at: every claim below was checked by A/B in the running game.
+
+- **The trees are solid geometry now, not alpha-tested cards.** Cards were behind every complaint at
+  once. A card has a constant normal, so it has no shading gradient; and three flips that normal on the
+  back face of a double-sided material, which is why the three horizontal cards in each conifer
+  rendered as hard black discs skewered on the trunk — the geometric normal points down, so from the
+  RTS camera's downward view they were always the back face. The needle bitmap was ~3,200 strokes one
+  to two pixels wide, which a hard alpha cutoff chops into salt-and-pepper, and at any distance those
+  strokes break into isolated specks that the outline pass then draws a black ring around, scattering
+  ticks across the hillside. Confirmed by hiding one mesh at a time: with the conifer cards hidden the
+  ticks vanished; with mipmaps disabled nothing changed, ruling out the filtering explanation.
+  A conifer is now five ridged cone tiers over a slim trunk, and a broadleaf is an opaque lumpy crown.
+  Solid forms hold a midtone, cannot fringe, and give the ink one clean silhouette to follow.
+- **The greens were being amputated, not saturated.** The style's albedo saturation ran
+  `max(vec3(0), mix(vec3(luminance), c, 1.3))`. Past the gamut boundary that drives a channel negative
+  and the clamp then removes it outright, so the needle albedo — measured at sRGB (17, 73, 14), which
+  is 81% saturation at 29% brightness — came out as literally `(0, G, 0)`: pure green, no red, no blue,
+  no midtone. Saturation is now pulled back to the largest factor that keeps every channel positive, so
+  hue survives; and the foliage palette was re-authored in linear reflectance with real red in it.
+- **The outline is a pen now, not a hairline.** It used to be the second derivative of depth, which
+  marks only the pixel where curvature peaks, and the one "thickness" control just moved the sampling
+  further out, making the line fatter but mushier and more prone to firing on clutter. It now asks, for
+  each pixel, whether anything nearer exists within the ink width — a minimum over a small disc. That
+  paints a solid band of exactly the authored width along every silhouette, cannot dash, and gives
+  width its own parameter, authored in CSS pixels so the weight is identical on a retina display.
+- **Grass now opts out of the ink by name.** Depth cannot tell a 1.3-unit grass tuft from a 1.4-unit
+  bot, so the previous screen-space clutter heuristic was guessing — and guessing wrong often enough to
+  chew real silhouettes into dashes. Grass writes alpha 0 and the outline pass ignores it as a
+  neighbour. The test is on the neighbour only, never on the pixel being drawn, so a unit standing in
+  long grass still gets a complete outline. The old heuristic is gone entirely.
+- **Also fixed while in there.** A distance taper on the line width keyed off the background's depth,
+  which against the sky is the far plane, so every silhouette against the sky was drawn at 55% width at
+  any range. The outline threshold scaled with range so aggressively that a tank lost its ink at about
+  150 units while trees kept theirs. Twelve fixed sample rays made a visible dodecagon around small
+  features; the ring is now rotated per pixel for 48 effective angles at no extra cost. The two tree
+  species shared one placement mask with different thresholds, so broadleaf ground was a strict
+  superset of conifer ground and every stand was the same mixed clutter — they now have decorrelated
+  masks with probability ramps, giving conifer stands, broadleaf groves and real clearings. Per-tree
+  tint could exceed 1.0 on every channel. Tree height spread within a stand was 3.2x.
+
+Cost: the outline pass is 1.5 ms/frame, and the world holds ~2.2M triangles of vegetation at 77-96 fps.
+
 ## v3.7.1 — 2026-09-03 — The ground stops crawling; an adversarial design review applied
 
 An adversarial review of the Polished Diorama Ink build. Two of the findings were the shimmer that had

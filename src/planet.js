@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clamp, lerp, smoothstep, mulberry32, Simplex, MinHeap, angleBetween, tangentToward, moveOnSphere, rotateTangent, anyTangent, frameQuat, TAU } from './util.js';
-import { detailTexture, cloudTexture, cloudNormalTexture, waterNormalTexture, leafClusterTexture, coniferTexture } from './textures.js';
+import { detailTexture, cloudTexture, cloudNormalTexture, waterNormalTexture } from './textures.js';
 import { getTextureSet } from './assets.js';
 import { STYLE_U, STYLE_GLSL, STYLE_LIGHT_GLSL } from './style.js';
 
@@ -678,27 +678,89 @@ export class Planet {
     const colorize = (g, c) => { const n = g.getAttribute('position').count; const col = new Float32Array(n * 3); for (let i = 0; i < n; i++) { col[i * 3] = c[0]; col[i * 3 + 1] = c[1]; col[i * 3 + 2] = c[2]; } g.setAttribute('color', new THREE.BufferAttribute(col, 3)); return g; };
     const rockGeo = () => { const g = lumpy(new THREE.IcosahedronGeometry(1, 2), 0.42); g.deleteAttribute('uv'); g.translate(0, 0.35, 0); const rc = RAMPS[b.palette].rock; return colorize(g, [rc[0] * 1.15, rc[1] * 1.15, rc[2] * 1.15]); };
     if (b.props === 'earth') {
-      const trunk = colorize(new THREE.CylinderGeometry(0.14, 0.22, 1.5, 5).toNonIndexed(), [0.28, 0.18, 0.1]); trunk.deleteAttribute('uv'); trunk.translate(0, 0.75, 0);
-      const cross = new THREE.BufferGeometry(); { const pos = [], uv = [], nrm = []; const hw = 1.35, y0 = 0.25, y1 = 5.6; for (let i = 0; i < 3; i++) { const a = i * Math.PI / 3; const dx = Math.cos(a) * hw, dz = Math.sin(a) * hw; const q = [[-dx, y0, -dz, 0, 0], [dx, y0, dz, 0.5, 0], [dx, y1, dz, 0.5, 1], [-dx, y0, -dz, 0, 0], [dx, y1, dz, 0.5, 1], [-dx, y1, -dz, 0, 1]]; for (const [x, y, z, u, v] of q) { pos.push(x, y, z); uv.push(u, v); const nn = new THREE.Vector3(x * 0.5, 0.85, z * 0.5).normalize(); nrm.push(nn.x, nn.y, nn.z); } }
-        // Horizontal cards let the tree read from directly above. A single wide one at mid-height
-        // looked like a disc skewered on the trunk, so use a few small ones climbing to the crown.
-        for (const [t, hw2] of [[0.42, 0.95], [0.66, 0.68], [0.88, 0.42]]) { const yt = y0 + (y1 - y0) * t; const ca = Math.cos(t * 5.1), sa = Math.sin(t * 5.1);
-          const corner = (sx, sz) => [ (sx * hw2) * ca - (sz * hw2) * sa, yt, (sx * hw2) * sa + (sz * hw2) * ca ];
-          const q = [[-1, -1, 0.5, 0], [1, -1, 1, 0], [1, 1, 1, 1], [-1, -1, 0.5, 0], [1, 1, 1, 1], [-1, 1, 0.5, 1]];
-          for (const [sx, sz, u, v] of q) { const c = corner(sx, sz); pos.push(c[0], c[1], c[2]); uv.push(u, v); nrm.push(0, 1, 0); } } cross.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); cross.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); cross.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); }
+      // Trees are built as SOLID geometry rather than alpha-tested cards. Cards were the source of
+      // every complaint about them: a card's flat constant normal has no shading gradient and three
+      // negates it on the back face, so the horizontal ones rendered as black discs skewered on the
+      // trunk; the needle bitmap is thousands of 1-2px strokes that a hard alphaTest chops into
+      // salt-and-pepper; and at any distance those strokes break into isolated specks that the ink
+      // pass then draws a black outline around, scattering ticks across the hillside. Solid forms
+      // have a continuous normal, hold a midtone, cannot fringe, and give the ink one clean
+      // silhouette to follow — which is the whole point of the house style.
+      const TAU2 = Math.PI * 2;
+      /** one ridged conical skirt of boughs; the rim zig-zags so the silhouette reads as needles */
+      const skirt = (out, y0, h, r, seg, droop, col, phase) => {
+        const apex = [0, y0 + h, 0];
+        for (let i = 0; i < seg; i++) {
+          const a0 = phase + i / seg * TAU2, a1 = phase + (i + 1) / seg * TAU2;
+          const r0 = r * (0.84 + 0.16 * ((i * 7 % 5) / 4)), r1 = r * (0.84 + 0.16 * (((i + 1) * 7 % 5) / 4));
+          const y_0 = y0 - droop * (i % 2), y_1 = y0 - droop * ((i + 1) % 2);
+          const d0 = [Math.cos(a0) * r0, y_0, Math.sin(a0) * r0];
+          const d1 = [Math.cos(a1) * r1, y_1, Math.sin(a1) * r1];
+          const ux = d0[0] - apex[0], uy = d0[1] - apex[1], uz = d0[2] - apex[2];
+          const vx = d1[0] - apex[0], vy = d1[1] - apex[1], vz = d1[2] - apex[2];
+          let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+          const L = Math.hypot(nx, ny, nz) || 1; nx /= L; ny /= L; nz /= L;
+          // Facet-to-facet value variation is what makes it read as hand-painted rather than moulded.
+          const sh = 0.88 + 0.12 * ((i * 3 % 4) / 3);
+          for (const v of [apex, d0, d1]) { out.pos.push(v[0], v[1], v[2]); out.nrm.push(nx, ny, nz); out.col.push(col[0] * sh, col[1] * sh, col[2] * sh); }
+        }
+      };
+      const geoFrom = (out) => { const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(out.pos, 3));
+        g.setAttribute('normal', new THREE.Float32BufferAttribute(out.nrm, 3));
+        g.setAttribute('color', new THREE.Float32BufferAttribute(out.col, 3)); return g; };
+      // Needle green in LINEAR reflectance, matching the convention RAMPS and the other props use.
+      // Every channel stays well clear of luminance*(1 - 1/1.3), below which the style's albedo
+      // saturation would drive it negative and clamp it to zero — which is what turned the old
+      // canopy into flat electric green with no red or blue left in it at all.
+      const NEEDLE = [[0.170, 0.255, 0.120], [0.189, 0.286, 0.132], [0.208, 0.317, 0.143], [0.227, 0.348, 0.155], [0.248, 0.380, 0.168]];
+      const coniferGeo = () => {
+        const out = { pos: [], nrm: [], col: [] };
+        const LAY = [[0.44, 1.52, 1.32, 0.00], [1.44, 1.42, 1.13, 0.55], [2.18, 1.38, 0.92, 1.10], [2.88, 1.34, 0.70, 1.65], [3.54, 1.40, 0.46, 2.20]];
+        LAY.forEach(([y0, h, r, ph], i) => skirt(out, y0, h, r, 11, 0.15, NEEDLE[i], ph));
+        const t = colorize(new THREE.CylinderGeometry(0.085, 0.155, 1.35, 6).toNonIndexed(), [0.150, 0.098, 0.062]);
+        t.deleteAttribute('uv'); t.translate(0, 0.675, 0);
+        return mergeGeometries([t, geoFrom(out)], false);
+      };
       const forest = (d) => this.noise.fbm(d.x * 5 + 3, d.y * 5, d.z * 5, 3);
-      const coneTree = () => { const c1 = colorize(new THREE.ConeGeometry(1.15, 2.2, 6).toNonIndexed(), [0.1, 0.3, 0.12]); c1.deleteAttribute('uv'); c1.translate(0, 2.0, 0);
-        const c2 = colorize(new THREE.ConeGeometry(0.9, 2.0, 6).toNonIndexed(), [0.13, 0.36, 0.14]); c2.deleteAttribute('uv'); c2.translate(0, 3.1, 0);
-        const c3 = colorize(new THREE.ConeGeometry(0.6, 1.7, 6).toNonIndexed(), [0.16, 0.42, 0.16]); c3.deleteAttribute('uv'); c3.translate(0, 4.2, 0);
-        return mergeGeometries([trunk.clone(), c1, c2, c3], false); };
-      kinds.push(PROP_CARDS ? { geo: trunk, canopy: cross, canopyTex: 'conifer', bark: true, count: Math.round(4200 * area), tries: 60, test: (e, s, d) => e > 1.6 && e < 13 && s < 0.4 && forest(d) > 0.04, scale: [0.7, 1.6], stretch: 1, tree: true } : { geo: coneTree(), count: Math.round(4200 * area), tries: 60, test: (e, s, d) => e > 1.6 && e < 13 && s < 0.4 && forest(d) > 0.04, scale: [0.7, 1.6], stretch: 1, tree: true });
-      const trunk2 = colorize(new THREE.CylinderGeometry(0.16, 0.3, 2.6, 7).toNonIndexed(), [0.3, 0.2, 0.12]); trunk2.deleteAttribute('uv'); trunk2.translate(0, 1.3, 0);
-      const branches = []; for (let i = 0; i < 4; i++) { const br = colorize(new THREE.CylinderGeometry(0.06, 0.12, 1.6, 5).toNonIndexed(), [0.28, 0.19, 0.11]); br.deleteAttribute('uv'); br.translate(0, 0.8, 0); br.rotateZ(0.7 + rng() * 0.5); br.rotateY(i * Math.PI / 2 + rng() * 0.6); br.translate(0, 2.2 + rng() * 0.5, 0); branches.push(br); }
-      const cards = new THREE.BufferGeometry(); { const pos = [], uv = [], nrm = []; for (let i = 0; i < 14; i++) { const cx = (rng() - 0.5) * 1.5, cy = 3.2 + (rng() - 0.5) * 1.3, cz = (rng() - 0.5) * 1.5; const sz = 1.3 + rng() * 0.7; const ax = rng() * Math.PI, ay = rng() * Math.PI * 2; const u = new THREE.Vector3(Math.cos(ay), 0, Math.sin(ay)); const vv = new THREE.Vector3(0, Math.cos(ax), Math.sin(ax)); const nn = new THREE.Vector3(cx, cy - 3.1 + 0.8, cz).normalize(); const corners = [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]]; for (const [a, b2] of corners) { pos.push(cx + (u.x * a + vv.x * b2) * sz / 2, cy + (u.y * a + vv.y * b2) * sz / 2, cz + (u.z * a + vv.z * b2) * sz / 2); uv.push(a * 0.5 + 0.5, b2 * 0.5 + 0.5); nrm.push(nn.x, nn.y, nn.z); } } cards.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); cards.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); cards.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); }
-      const blobCanopy = () => { const cn = colorize(lumpy(new THREE.IcosahedronGeometry(1.5, 1), 0.5), [0.18, 0.4, 0.14]); cn.deleteAttribute('uv'); cn.translate(0, 3.2, 0); return mergeGeometries([trunk2.clone(), cn], false); };
-      kinds.push(PROP_CARDS ? { geo: mergeGeometries([trunk2, ...branches], false), canopy: cards, bark: true, count: Math.round(2600 * area), tries: 40, test: (e, s, d) => e > 1.4 && e < 10 && s < 0.3 && forest(d) > -0.04, scale: [0.8, 1.5], stretch: 1, tree: true } : { geo: blobCanopy(), count: Math.round(2600 * area), tries: 40, test: (e, s, d) => e > 1.4 && e < 10 && s < 0.3 && forest(d) > -0.04, scale: [0.8, 1.5], stretch: 1, tree: true });
-      const bush = colorize(lumpy(new THREE.IcosahedronGeometry(0.8, 1), 0.3), [0.2, 0.38, 0.13]); bush.deleteAttribute('uv'); bush.translate(0, 0.45, 0);
-      kinds.push({ geo: bush, count: Math.round(2400 * area), test: (e, s) => e > 1.2 && e < 11 && s < 0.45, scale: [0.6, 1.4], stretch: 0.8, tree: true });
+      // A second, decorrelated field. The two species used to share one mask with different
+      // thresholds, so broadleaf ground was a strict superset of conifer ground and every stand was
+      // the same mixed clutter. Separate fields give conifer ridges, broadleaf hollows, and gaps.
+      const grove = (d) => this.noise.fbm(d.x * 5 + 41.7, d.y * 5 + 17.3, d.z * 5 + 63.1, 3);
+      // Ramp the placement PROBABILITY across the mask instead of switching on a hard threshold, so a
+      // stand thins out at its edge and leaves real clearings rather than ending on a contour line.
+      const ramp = (x, a, b) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+      kinds.push({ geo: coniferGeo(), count: Math.round(11000 * area), tries: 40,
+        test: (e, s, d) => e > 1.6 && e < 13 && s < 0.4 && rng() < ramp(forest(d), 0.00, 0.24) * (1 - ramp(grove(d), 0.02, 0.18)),
+        scale: [0.75, 1.35], stretch: 0.9, tree: true });
+
+      // Broadleaf: an opaque lumpy crown so the ink gets one silhouette, with a few outward-facing
+      // leaf clumps breaking the outline. The old version was 14 quads on non-orthogonal axes, which
+      // sheared them an average of 26 degrees and collapsed nearly a tenth of them to slivers.
+      const trunk2 = colorize(new THREE.CylinderGeometry(0.14, 0.26, 2.6, 7).toNonIndexed(), [0.160, 0.105, 0.066]); trunk2.deleteAttribute('uv'); trunk2.translate(0, 1.3, 0);
+      const branches = []; for (let i = 0; i < 3; i++) {
+        // Kept short: at 1.6 long these poked well clear of the crown and read as brown spears.
+        const br = colorize(new THREE.CylinderGeometry(0.06, 0.11, 0.95, 5).toNonIndexed(), [0.155, 0.102, 0.064]);
+        br.deleteAttribute('uv'); br.translate(0, 0.45, 0); br.rotateZ(0.55 + rng() * 0.35); br.rotateY(i * 2.0944 + rng() * 0.6); br.translate(0, 2.35 + rng() * 0.35, 0); branches.push(br);
+      }
+      const LEAF = [[0.185, 0.272, 0.115], [0.212, 0.312, 0.130], [0.240, 0.352, 0.146]];
+      const crownGeo = () => {
+        const parts = [];
+        const blob = (r, x, y, z, c, amt, det = 1) => { const g = colorize(lumpy(new THREE.IcosahedronGeometry(r, det), amt), c); g.deleteAttribute('uv'); g.scale(1, 0.82, 1); g.translate(x, y, z); return g; };
+        parts.push(blob(1.28, 0, 3.15, 0, LEAF[1], 0.30));
+        parts.push(blob(0.86, 0.82, 3.62, -0.30, LEAF[2], 0.12, 0));
+        parts.push(blob(0.80, -0.72, 3.48, 0.46, LEAF[0], 0.12, 0));
+        parts.push(blob(0.72, 0.18, 2.62, 0.78, LEAF[0], 0.11, 0));
+        parts.push(blob(0.64, -0.30, 2.78, -0.76, LEAF[1], 0.11, 0));
+        return mergeGeometries(parts, false);
+      };
+      kinds.push({ geo: mergeGeometries([trunk2, ...branches, crownGeo()], false), count: Math.round(4200 * area), tries: 40,
+        test: (e, s, d) => e > 1.4 && e < 10 && s < 0.3 && rng() < ramp(grove(d), 0.00, 0.24) * (1 - ramp(forest(d), 0.02, 0.18)),
+        scale: [0.80, 1.30], stretch: 0.9, tree: true });
+
+      // Bushes belong in the clearings between the two canopies, not under them.
+      const bush = colorize(lumpy(new THREE.IcosahedronGeometry(0.8, 1), 0.20), [0.225, 0.310, 0.145]); bush.deleteAttribute('uv'); bush.translate(0, 0.42, 0);
+      kinds.push({ geo: bush, count: Math.round(3200 * area), tries: 24, test: (e, s, d) => e > 1.2 && e < 11 && s < 0.45 && rng() < 1 - ramp(Math.max(forest(d), grove(d)), 0.0, 0.20), scale: [0.55, 1.15], stretch: 0.75, tree: true });
       kinds.push({ geo: rockGeo(), count: Math.round(1200 * area), test: (e, s) => e > 1.0 && (s > 0.25 || rng() < 0.2), scale: [0.6, 3.2], stretch: 0.7, stone: true });
     } else if (b.props === 'ice') {
       const cr = colorize(new THREE.ConeGeometry(0.45, 3.2, 6).toNonIndexed(), [0.6, 0.82, 1.0]); cr.deleteAttribute('uv'); cr.translate(0, 1.4, 0);
@@ -723,8 +785,9 @@ export class Planet {
       if (k.stone) injectStone(mat, tex[1]); else if (k.bark) injectStone(mat, getTextureSet('bark'));
       const pk = k.stone ? 'props_stone' : (k.bark ? 'props_bark' : 'props'); injectSun(mat, this.uniforms.uSunView, pk); injectFog(mat, this.uniforms, pk + '_sun');
       const mesh = new THREE.InstancedMesh(k.geo, mat, k.count); let n = 0; let tries = 0;
-      let canopyMesh = null;
-      if (k.canopy) { const lm = new THREE.MeshStandardMaterial({ map: k.canopyTex === 'conifer' ? coniferTexture() : leafClusterTexture(), alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.85, metalness: 0 }); injectSun(lm, this.uniforms.uSunView, 'leaves'); injectFog(lm, this.uniforms, 'leaves_sun'); canopyMesh = new THREE.InstancedMesh(k.canopy, lm, k.count); canopyMesh.layers.set(1); }
+      // Every tree in the world is solid geometry now, so nothing asks for an alpha-card canopy and
+      // the second instanced mesh that used to accompany each kind is gone with it.
+      const canopyMesh = null;
       const dir = new THREE.Vector3(), tan = new THREE.Vector3(), pos = new THREE.Vector3();
       while (n < k.count && tries++ < k.count * (k.tries || 8)) {
         const i = Math.floor(rng() * nav.count); this.nodeDir(i, dir);
@@ -738,7 +801,15 @@ export class Planet {
         const h = this.heightAt(dir); pos.copy(dir).multiplyScalar(h - 0.15);
         rotateTangent(dir, anyTangent(dir, _v1), rng() * TAU, tan); frameQuat(dir, tan, _q);
         const sc = k.scale[0] + rng() * (k.scale[1] - k.scale[0]); _s.set(sc, sc * (k.stretch + rng() * 0.4), sc); _m.compose(pos, _q, _s); mesh.setMatrixAt(n, _m); if (canopyMesh) canopyMesh.setMatrixAt(n, _m);
-        const v = 0.8 + rng() * 0.4; const tc = k.tree ? new THREE.Color(0.75 + rng() * 0.5, 0.85 + rng() * 0.3, 0.7 + rng() * 0.4) : new THREE.Color(v, v * (0.95 + rng() * 0.1), v); mesh.setColorAt(n, tc); if (canopyMesh) canopyMesh.setColorAt(n, tc); n++;
+        // These are LINEAR multipliers. The old tree range reached 1.25 on red and averaged a
+        // systematic blue cut, so it both brightened past the material's own albedo and skewed the
+        // whole canopy yellow-green. Keep every channel at or under 1 and carry the variety as a
+        // small warm/cool swing instead, which is what reads as individual trees rather than noise.
+        const v = 0.82 + rng() * 0.18;
+        const w = rng();
+        const tc = k.tree ? new THREE.Color(0.80 + w * 0.20, 0.86 + rng() * 0.14, 0.78 + (1 - w) * 0.20)
+                          : new THREE.Color(v, v * (0.96 + rng() * 0.08), v);
+        mesh.setColorAt(n, tc); if (canopyMesh) canopyMesh.setColorAt(n, tc); n++;
       }
       mesh.count = n; mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       mesh.castShadow = !!k.tree; mesh.receiveShadow = true; mesh.frustumCulled = true; k.geo.computeBoundingSphere(); mesh.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), R + 40);
