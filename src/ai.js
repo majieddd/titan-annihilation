@@ -49,17 +49,27 @@ export class AI {
     this.manageCommander(c); this.manageFabbers(c); this.manageFactories(c); this.manageOrbital(c); this.manageNukes(c); this.manageDefense(c); this.manageArmy(c);
   }
   needEnergy() { const T = this.T(); const demandE = (T.lastDemandM + 30) * ECON.energyPerMetal; return T.incomeE < demandE * 1.15 || (T.stallE && T.energy < T.energyCap * 0.3); }
-  freeSpot(planet, near, maxDist) {
+  freeSpot(planet, near, maxDist, builder = null) {
     const R = planet.R; const cands = [];
     const lim = Math.cos(Math.min(Math.PI, maxDist / R));
-    for (const s of planet.spots) { if (s.taken && !s.taken.dead) continue; const d = s.dir.dot(near); if (d > lim) cands.push([d, s]); }
+    // A metal spot on another continent is placeable but not WALKABLE. Without this check a ground
+    // engineer is sent across an ocean, stalls at the shoreline, and the 60s blacklist never trips
+    // because canPlace keeps saying yes. On the home world 41 of 76 spots are off-continent.
+    const walk = builder && builder.planet === planet && !builder.dead
+      && builder.def && builder.def.layer === 'ground' && planet.sameComponent;
+    for (const s of planet.spots) {
+      if (s.taken && !s.taken.dead) continue;
+      const d = s.dir.dot(near); if (d <= lim) continue;
+      if (walk && !planet.sameComponent(builder.dir, s.dir)) continue;
+      cands.push([d, s]);
+    }
     cands.sort((a, b) => b[0] - a[0]);
     for (const [, s] of cands) { if (s.aiBad && this.game.time - s.aiBad < 60) continue; if (this.game.canPlace('metal_extractor', this.team, planet, s.dir).ok) return s; s.aiBad = this.game.time; }
     return null;
   }
   tryBuild(id, builder, planet, near, minR = 8, maxR = 60, toward = null) {
     const g = this.game; let dir;
-    if (DEFS[id].extractor) { const s = this.freeSpot(planet, near, maxR); if (!s) return false; dir = s.dir; }
+    if (DEFS[id].extractor) { const s = this.freeSpot(planet, near, maxR, builder); if (!s) return false; dir = s.dir; }
     else { dir = g.findPlacement(id, this.team, planet, near, minR, maxR, toward); if (!dir) return false; }
     const s = g.placeStructure(id, this.team, planet, dir); if (!s) return false;
     g.orderBuild([builder], s, false); if (this.c) { this.c.building.push(s); if (s.def.factory && s.def.factory.tier === 2) this.c.hasAdv = true; if (s.def.teleporter) this.c.teleporters.push(s); }
@@ -116,7 +126,7 @@ export class AI {
     while (this.opening.length) { const id = this.opening[0]; this.opening.shift(); if (this.tryBuild(id, cm, this.home, this.base, 8, 50, null)) return; }
     if (this.needEnergy() && this.tryBuild('energy_plant', cm, this.home, this.base, 8, 60)) return;
     if (this.strategicBuild(c, cm)) return;
-    if (this.freeSpot(this.home, this.base, 70) && this.tryBuild('metal_extractor', cm, this.home, this.base, 0, 70)) return;
+    if (this.freeSpot(this.home, this.base, 70, cm) && this.tryBuild('metal_extractor', cm, this.home, this.base, 0, 70)) return;
     if (c.factories.length + c.building.filter((b) => b.def.factory).length < this.desiredFactories() && T.metal > 300 && this.tryBuild(this.nextFactoryType(c), cm, this.home, this.base, 10, 60)) return;
     if (g.time - this.lastDefenseBuild > this.p.defenseGap && c.structures.length > 6) { const id = c.enemyAir > 4 && this.rng() < 0.5 ? 'flak_tower' : 'laser_tower'; if (this.tryBuild(id, cm, this.home, this.rally, 4, 40, this.enemyBase)) { this.lastDefenseBuild = g.time; return; } }
     this.assistSomething(c, cm);

@@ -16,6 +16,10 @@ function iattr(g, name, cap, size) { const a = new THREE.InstancedBufferAttribut
 class GPUParticles {
   constructor(cap, { additive = true, sharp = false, renderOrder = 20 } = {}) {
     this.cap = cap; this.head = 0; this.dirty = false; this.time = 0; this.centerFor = null;
+    // Slots are only culled inside the vertex shader, so drawing the whole capacity every frame pays
+    // a vertex invocation per never-used slot — from the title screen onward. Track how much of the
+    // ring has been written and when the newest particle expires, and draw only that.
+    this.used = 0; this.lastEnd = -1;
     const g = instancedQuad(cap);
     this.aPos0 = iattr(g, 'aPos0', cap, 3); this.aVel = iattr(g, 'aVel', cap, 3); this.aInfo = iattr(g, 'aInfo', cap, 4); this.aColor = iattr(g, 'aColor', cap, 3); this.aExtra = iattr(g, 'aExtra', cap, 3); this.aCenter = iattr(g, 'aCenter', cap, 3);
     this.uniforms = { uFxGain: STYLE_U.uStFxGain, uFxTint: STYLE_U.uStFxTint, uTime: { value: 0 } };
@@ -44,10 +48,14 @@ class GPUParticles {
     const c = center || (this.centerFor ? this.centerFor(x, y, z) : null);
     this.aPos0.setXYZ(i, x, y, z); this.aVel.setXYZ(i, vx, vy, vz); this.aInfo.setXYZW(i, this.time, life, size, drag); this.aColor.setXYZ(i, r, g, b); this.aExtra.setXYZ(i, grav, grow, spin || 0);
     this.aCenter.setXYZ(i, c ? c.x : 0, c ? c.y : 0, c ? c.z : 0); this.dirty = true;
+    if (i + 1 > this.used) this.used = i + 1;
+    const end = this.time + life; if (end > this.lastEnd) this.lastEnd = end;
   }
   update(time) {
     this.time = time; this.uniforms.uTime.value = time;
     if (this.dirty) { this.aPos0.needsUpdate = this.aVel.needsUpdate = this.aInfo.needsUpdate = this.aColor.needsUpdate = this.aExtra.needsUpdate = this.aCenter.needsUpdate = true; this.dirty = false; }
+    // No particle can outlive lastEnd, so past it the whole pool is provably empty.
+    this.mesh.geometry.instanceCount = time >= this.lastEnd ? 0 : this.used;
   }
 }
 class InstPool {

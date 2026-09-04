@@ -205,11 +205,11 @@ const V = (r, g, b) => [r, g, b];
 export const STYLES = [
   {
     id: 'polished', name: 'Polished Diorama Ink', hint: 'The house style: the diorama\'s clay, saturation and rim light with realism\'s soft glow, atmospheric mist and full-detail materials, drawn with hard black outlines and a gentle tilt-shift.',
-    mat: { lod: 0.35, normal: 0.75, poster: 0, sat: 1.3, bands: 0, soft: 0.06, ambient: 1, spec: 0.72, hatch: 0, halftone: 0, outline: 0, clay: 0.85, faction: 0, tooth: 0, jitter: 0, rim: 0, rimColor: V(1, 1, 1), tile: 0, flat: 0, fxGain: 1.0, shadowTint: V(0.9, 0.93, 1.02), litTint: V(1.03, 1.0, 0.96) },
+    mat: { lod: 2.1, normal: 0.32, poster: 0, sat: 1.3, bands: 0, soft: 0.06, ambient: 1, spec: 0.42, hatch: 0, halftone: 0, outline: 0, clay: 0.85, faction: 0, tooth: 0, jitter: 0, rim: 0, rimColor: V(1, 1, 1), tile: 0, flat: 0, fxGain: 1.0, shadowTint: V(0.9, 0.93, 1.02), litTint: V(1.03, 1.0, 0.96) },
     light: { sun: 3.6, sunColor: 0xfff0da, hemi: 0.5, env: 0.95, fill: 0.55, fillColor: 0xa8c8ff },
     atmo: { aerial: 0.85, sunI: 0.95 },
-    post: { tone: 'aces', exposure: 1.12, gtao: true, bloom: [0.28, 0.55, 0.86], edge: { thick: 2.2, depthT: 0.042, normalT: 0.32, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0, fade: 900 }, halftone: null, tilt: { amount: 3.2, focus: 0.5, width: 0.3 },
-      grade: { sat: 1.16, con: 1.06, vig: 0.3, sharp: 0.18, ca: 0.004, grain: 0.02, poster: 0, paper: 0, shadowTint: V(0.98, 0.99, 1.03), highTint: V(1.03, 1.0, 0.97) } },
+    post: { tone: 'aces', exposure: 1.12, gtao: true, bloom: [0.3, 0.6, 0.82], edge: { thick: 2.2, depthT: 0.042, normalT: 0.32, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0, fade: 900, coherence: 0.0012 }, halftone: null, tilt: { amount: 3.2, focus: 0.5, width: 0.3 },
+      grade: { sat: 1.16, con: 1.04, vig: 0.28, sharp: 0, ca: 0.004, grain: 0, poster: 0, paper: 0, shadowTint: V(0.98, 0.99, 1.03), highTint: V(1.03, 1.0, 0.97) } },
   },
   {
     id: 'realism', name: 'Polished Realism', hint: 'The photographic baseline: scanned materials, scattering sky, image-based light, gentle film grade.',
@@ -224,7 +224,7 @@ export const STYLES = [
     mat: { lod: 3.5, normal: 0.15, poster: 0, sat: 1.25, bands: 3, soft: 0.04, ambient: 1.2, spec: 0.8, hatch: 0, halftone: 0, outline: 0.3, clay: 0, faction: 0, shadowTint: V(0.6, 0.66, 0.98), litTint: V(1.03, 1.0, 0.95) },
     light: { sun: 3.0, sunColor: 0xfff6ea, hemi: 0.35, env: 0.45, fill: 0.3, fillColor: 0x8fb8ff },
     atmo: { aerial: 0.5, sunI: 0.9 },
-    post: { tone: 'neutral', exposure: 1.05, gtao: false, bloom: [0.12, 0.4, 0.95], edge: { thick: 1.6, depthT: 0.05, normalT: 0.35, color: V(0.05, 0.04, 0.09), strength: 0.9, boil: 0 }, halftone: null, tilt: null,
+    post: { tone: 'neutral', exposure: 1.05, gtao: false, bloom: [0.12, 0.4, 0.95], edge: { thick: 1.6, depthT: 0.05, normalT: 0.35, color: V(0.05, 0.04, 0.09), strength: 0.9, boil: 0 , coherence: 0.0012 }, halftone: null, tilt: null,
       grade: { sat: 1.1, con: 1.08, vig: 0.22, sharp: 0, ca: 0, grain: 0, poster: 0, paper: 0, shadowTint: V(1, 1, 1), highTint: V(1, 1, 1) } },
   },
   {
@@ -232,7 +232,7 @@ export const STYLES = [
     mat: { lod: 2.5, normal: 0.3, poster: 0, sat: 1.35, bands: 2, soft: 0.03, ambient: 1.25, spec: 0.6, hatch: 0.3, halftone: 0, outline: 0.3, clay: 0, faction: 1, shadowTint: V(0.55, 0.5, 0.9), litTint: V(1.05, 0.98, 0.92) },
     light: { sun: 3.2, sunColor: 0xffe9d6, hemi: 0.5, env: 0.5, fill: 0.35, fillColor: 0xff4fd8 },
     atmo: { aerial: 0.35, sunI: 0.8 },
-    post: { tone: 'neutral', exposure: 1.0, gtao: false, bloom: [0.22, 0.6, 0.85], edge: { thick: 2.0, depthT: 0.045, normalT: 0.32, color: V(0.09, 0.02, 0.13), strength: 1.0, boil: 1 }, halftone: { dots: 0.5, size: 7 }, tilt: null,
+    post: { tone: 'neutral', exposure: 1.0, gtao: false, bloom: [0.22, 0.6, 0.85], edge: { thick: 2.0, depthT: 0.045, normalT: 0.32, color: V(0.09, 0.02, 0.13), strength: 1.0, boil: 1 , coherence: 0.0012 }, halftone: { dots: 0.5, size: 7 }, tilt: null,
       grade: { sat: 1.15, con: 1.12, vig: 0.3, sharp: 0, ca: 0.03, grain: 0.07, poster: 0, paper: 0.35, shadowTint: V(0.95, 0.9, 1.1), highTint: V(1.05, 1.0, 0.95) } },
   },
   {
@@ -240,7 +240,7 @@ export const STYLES = [
     mat: { lod: 1.0, normal: 0.8, poster: 0, sat: 1.15, bands: 0, soft: 0.06, ambient: 1, spec: 0.7, hatch: 0.7, halftone: 0, outline: 0.45, clay: 0, faction: 0, shadowTint: V(0.68, 0.7, 0.92), litTint: V(1.04, 1.0, 0.94) },
     light: { sun: 3.4, sunColor: 0xfff2e0, hemi: 0.5, env: 0.9, fill: 0.2, fillColor: 0xa0c0ff },
     atmo: { aerial: 0.45, sunI: 0.9 },
-    post: { tone: 'cineon', exposure: 1.05, gtao: true, bloom: [0.18, 0.5, 0.9], edge: { thick: 2.4, depthT: 0.04, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0 }, halftone: null, tilt: null,
+    post: { tone: 'cineon', exposure: 1.05, gtao: true, bloom: [0.18, 0.5, 0.9], edge: { thick: 2.4, depthT: 0.04, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0 , coherence: 0.0012 }, halftone: null, tilt: null,
       grade: { sat: 1.05, con: 1.15, vig: 0.45, sharp: 0.35, ca: 0, grain: 0.05, poster: 0, paper: 0.15, shadowTint: V(0.96, 0.96, 1.02), highTint: V(1.02, 1.0, 0.98) } },
   },
   {
@@ -256,7 +256,7 @@ export const STYLES = [
     mat: { lod: 0, normal: 1.2, poster: 0, sat: 1.18, bands: 0, soft: 0.06, ambient: 1, spec: 1.4, hatch: 0.45, halftone: 0, outline: 0.4, clay: 0, faction: 0, shadowTint: V(0.88, 0.9, 1.04), litTint: V(1.03, 1.0, 0.96) },
     light: { sun: 3.9, sunColor: 0xfff6ec, hemi: 0.3, env: 0.85, fill: 0.15, fillColor: 0xa0c0ff },
     atmo: { aerial: 1.2, sunI: 1.0 },
-    post: { tone: 'aces', exposure: 1.08, gtao: true, bloom: [0.24, 0.45, 0.9], edge: { thick: 2.2, depthT: 0.04, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0, fade: 420 }, halftone: null, tilt: null,
+    post: { tone: 'aces', exposure: 1.08, gtao: true, bloom: [0.24, 0.45, 0.9], edge: { thick: 2.2, depthT: 0.04, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0, fade: 420 , coherence: 0.0012 }, halftone: null, tilt: null,
       grade: { sat: 1.15, con: 1.12, vig: 0.3, sharp: 0.4, ca: 0, grain: 0.03, poster: 0, paper: 0.1, shadowTint: V(0.96, 0.97, 1.03), highTint: V(1.03, 1.0, 0.97) } },
   },
   {
@@ -265,7 +265,7 @@ export const STYLES = [
       ramp: { bands: 4, rampGamma: 1.28, facetJitter: 0.19, shadowLift: 0.24, bandCap: 1.0, shadowBand: 0.16, shadowEdge: 0.30, shadowSoft: 0.30, shadowDepth: 0.30, ambient: 0.30, specStrength: 0.46, specPower: 14, rimStrength: 0.85, rimPower: 3.4, toothStrength: 0.46, toothScale: 0.42, albTint: V(0.40, 0.31, 0.62), albMix: 0.78, palette: derivePalette(0x38e8ff, 0.66, { rimShift: 0.02 }) } },
     light: { sun: 3.0, sunColor: 0xffffff, hemi: 0, env: 0, fill: 0, fillColor: 0xffffff },
     atmo: { aerial: 0.45, sunI: 0.16 },
-    post: { tone: 'aces', exposure: 0.94, gtao: false, bloom: [0.5, 0.6, 0.62], edge: { thick: 1.8, depthT: 0.05, normalT: 0.45, color: V(0.02, 0.012, 0.06), strength: 0.95, boil: 0 }, halftone: { dots: 0.62, size: 7 }, tilt: null,
+    post: { tone: 'aces', exposure: 0.94, gtao: false, bloom: [0.5, 0.6, 0.62], edge: { thick: 1.8, depthT: 0.05, normalT: 0.45, color: V(0.02, 0.012, 0.06), strength: 0.95, boil: 0 , coherence: 0.0012 }, halftone: { dots: 0.62, size: 7 }, tilt: null,
       grade: { sat: 1.24, con: 1.10, vig: 0.54, sharp: 0, ca: 0.01, grain: 0.042, poster: 0, paper: 0.20, shadowTint: V(1, 1, 1), highTint: V(1, 1, 1) } },
     world: { detail: 7, grass: false, cards: false },
   },
@@ -275,7 +275,7 @@ export const STYLES = [
       ramp: { bands: 4, rampGamma: 1.24, facetJitter: 0.19, shadowLift: 0.24, bandCap: 0.70, shadowBand: 0.16, shadowEdge: 0.30, shadowSoft: 0.30, shadowDepth: 0.30, ambient: 0.26, specStrength: 0.20, specPower: 90, rimStrength: 0.85, rimPower: 3.4, toothStrength: 0.46, toothScale: 0.42, albTint: V(0.17, 0.27, 0.55), albMix: 0.85, palette: derivePalette(0x38e8ff, 0.66, { rimShift: 0.02, groundL: 0.14 }) } },
     light: { sun: 3.0, sunColor: 0xffffff, hemi: 0, env: 0, fill: 0, fillColor: 0xffffff },
     atmo: { aerial: 0.4, sunI: 0.1 },
-    post: { tone: 'aces', exposure: 0.88, gtao: false, bloom: [0.5, 0.6, 0.62], edge: { thick: 1.8, depthT: 0.05, normalT: 0.45, color: V(0.01, 0.012, 0.05), strength: 0.95, boil: 0 }, halftone: { dots: 0.62, size: 7 }, tilt: null,
+    post: { tone: 'aces', exposure: 0.88, gtao: false, bloom: [0.5, 0.6, 0.62], edge: { thick: 1.8, depthT: 0.05, normalT: 0.45, color: V(0.01, 0.012, 0.05), strength: 0.95, boil: 0 , coherence: 0.0012 }, halftone: { dots: 0.62, size: 7 }, tilt: null,
       grade: { sat: 1.24, con: 1.10, vig: 0.54, sharp: 0, ca: 0.008, grain: 0.042, poster: 0, paper: 0.20, shadowTint: V(1, 1, 1), highTint: V(1, 1, 1) } },
     world: { detail: 7, grass: false, cards: false },
   },
@@ -293,7 +293,7 @@ export const STYLES = [
     mat: { lod: 1.2, normal: 0.6, poster: 0, sat: 1.3, bands: 0, soft: 0.06, ambient: 1, spec: 0.45, hatch: 0, halftone: 0, outline: 0, clay: 1, faction: 0, tooth: 0, jitter: 0, rim: 0, rimColor: V(1, 1, 1), tile: 0, flat: 0, fxGain: 0.9, shadowTint: V(0.9, 0.92, 1.0), litTint: V(1.03, 1.0, 0.96) },
     light: { sun: 3.8, sunColor: 0xfff0d8, hemi: 0.55, env: 0.95, fill: 0.62, fillColor: 0xa8c8ff },
     atmo: { aerial: 0.15, sunI: 0.7 },
-    post: { tone: 'aces', exposure: 1.18, gtao: true, bloom: [0.14, 0.5, 0.9], edge: { thick: 2.4, depthT: 0.04, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0 }, halftone: null, tilt: { amount: 5, focus: 0.5, width: 0.2 },
+    post: { tone: 'aces', exposure: 1.18, gtao: true, bloom: [0.14, 0.5, 0.9], edge: { thick: 2.4, depthT: 0.04, normalT: 0.3, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0 , coherence: 0.0012 }, halftone: null, tilt: { amount: 5, focus: 0.5, width: 0.2 },
       grade: { sat: 1.14, con: 1.06, vig: 0.3, sharp: 0.2, ca: 0.004, grain: 0.02, poster: 0, paper: 0, shadowTint: V(1.0, 1.0, 1.02), highTint: V(1.03, 1.0, 0.97) } },
   },
   {

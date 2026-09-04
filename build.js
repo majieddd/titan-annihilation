@@ -46,6 +46,29 @@ let html = fs.readFileSync(path.join(__dirname, 'dev.html'), 'utf8');
 if (texData) html = html.replace('<script type="importmap">', `<script>window.__TEXDATA = ${JSON.stringify(texData)};</script>\n<script type="importmap">`);
 const importLines = [...bareImports];
 for (const [spec, names] of namedImports) importLines.push(`import { ${[...names].join(', ')} } from '${spec}';`);
+// `node --check` accepts a line comment spliced into the middle of a single-line function: everything
+// after `//` to the end of that physical line silently vanishes, statements included. That shipped a
+// resize() whose pixel-ratio declaration was eaten, so it threw at boot. Flag comments with live code
+// behind them before the parse, since the parser will never object.
+{
+  const CODE_AFTER = /\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=|[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+\s*\(|\breturn\s+[A-Za-z_$]/;
+  const bad = [];
+  for (const f of ORDER) {
+    const fp = path.join(__dirname, 'src', f + '.js');
+    if (!fs.existsSync(fp)) continue;
+    const src = fs.readFileSync(fp, 'utf8').split('\n');
+    src.forEach((line, i) => {
+      const q = line.replace(/(['"`])(?:\\.|(?!\1).)*\1/g, '""');   // blank out strings first
+      const k = q.indexOf('//');
+      if (k < 0 || /https?:$/.test(q.slice(0, k))) return;
+      // A whole-line comment is harmless. Only a comment with live code BEFORE it can swallow code
+      // after it, so that is the only shape worth flagging.
+      if (!/[;{})=]/.test(q.slice(0, k))) return;
+      if (CODE_AFTER.test(q.slice(k + 2))) bad.push(`src/${f}.js:${i + 1}  ${line.trim().slice(0, 110)}`);
+    });
+  }
+  if (bad.length) { console.error('COMMENT SWALLOWS CODE — not written:\n' + bad.join('\n')); process.exit(1); }
+}
 // Parse the bundled script before shipping it. Every module has its own scope on the dev page, so a
 // collision between two hoisted imports only breaks the BUNDLE — which is the build users actually
 // run. That shipped once; never again.

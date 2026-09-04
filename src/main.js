@@ -67,9 +67,9 @@ camera.layers.enable(1); sun.shadow.camera.layers.enable(1);
 const QUAD_VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
 // ink / outline pass: depth + reconstructed-normal edges from the scene depth texture
 const edgePass = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uNear: { value: 1 }, uFar: { value: 1000 }, uProjInv: { value: new THREE.Matrix4() }, uThick: { value: 1.5 }, uDepthT: { value: 0.05 }, uNormalT: { value: 0.35 }, uStrength: { value: 1 }, uBoil: { value: 0 }, uFade: { value: 0 }, uTime: { value: 0 }, uColor: { value: new THREE.Vector3(0, 0, 0) } },
+  uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uNear: { value: 1 }, uFar: { value: 1000 }, uProjInv: { value: new THREE.Matrix4() }, uThick: { value: 1.5 }, uDepthT: { value: 0.05 }, uNormalT: { value: 0.35 }, uStrength: { value: 1 }, uBoil: { value: 0 }, uFade: { value: 0 }, uTime: { value: 0 }, uCoh: { value: 0 }, uColor: { value: new THREE.Vector3(0, 0, 0) } },
   vertexShader: QUAD_VS,
-  fragmentShader: `uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform vec2 uTexel; uniform float uNear, uFar, uThick, uDepthT, uNormalT, uStrength, uBoil, uFade, uTime; uniform vec3 uColor; uniform mat4 uProjInv; varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform vec2 uTexel; uniform float uNear, uFar, uThick, uDepthT, uNormalT, uStrength, uBoil, uFade, uTime, uCoh; uniform vec3 uColor; uniform mat4 uProjInv; varying vec2 vUv;
     float lin(float d) { float z = d * 2.0 - 1.0; return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }
     vec3 vpos(vec2 uv, float d) { vec4 p = uProjInv * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); return p.xyz / p.w; }
     void main(){
@@ -85,7 +85,14 @@ const edgePass = new ShaderPass({
       vec3 P = vpos(uv, d0); vec3 Px = vpos(uv + vec2(o.x, 0.0), dR) - P; vec3 Py = vpos(uv + vec2(0.0, o.y), dU) - P; vec3 n0 = normalize(cross(Px, Py));
       vec3 PL = vpos(uv - vec2(o.x, 0.0), dL); vec3 PD = vpos(uv - vec2(0.0, o.y), dD); vec3 n1 = normalize(cross(P - PL, Py)); vec3 n2 = normalize(cross(Px, P - PD));
       float eN = smoothstep(uNormalT, uNormalT + 0.3, max(1.0 - dot(n0, n1), 1.0 - dot(n0, n2))) * (1.0 - step(0.9999, d0));
-      float e = clamp(max(eDepth, eN) * uStrength, 0.0, 1.0);
+      // Grass cards are thin slivers, so the outline detector drew a black ring around every blade and
+      // the ground turned to crawling stipple. A real silhouette is locally a LINE: it breaks depth
+      // along one screen axis while the perpendicular axis stays smooth. Clutter breaks both at once.
+      // Taking the smaller of the two axis gradients therefore reads near zero on lines and high in
+      // foliage, which separates the ink we want from the noise we do not.
+      float ax = abs(zL - zR) / zn, ay = abs(zD - zU) / zn;
+      float coh = uCoh > 0.0 ? 1.0 - smoothstep(uCoh, uCoh * 3.0, min(ax, ay)) : 1.0;
+      float e = clamp(max(eDepth, eN) * uStrength * coh, 0.0, 1.0);
       if (uFade > 0.0) e *= exp(-zn / uFade); // ink dissolves into the haze with distance
       gl_FragColor = vec4(mix(col.rgb, uColor, e), col.a); }` });
 edgePass.enabled = false; composer.insertPass(edgePass, 1);
@@ -121,14 +128,13 @@ app.setStyle = (id) => {
   applyStyleUniforms(st.mat); STYLE_U.uStKey.value = st.light.sun / Math.PI;
   sun.intensity = st.light.sun; sun.color.set(st.light.sunColor); hemi.intensity = st.light.hemi; fill.intensity = st.light.fill; fill.color.set(st.light.fillColor); scene.environmentIntensity = st.light.env;
   const p = st.post; app.bloomBase = p.bloom[0]; bloom.strength = p.bloom[0]; bloom.radius = p.bloom[1]; bloom.threshold = p.bloom[2];
-  edgePass.enabled = !!p.edge; if (p.edge) { const u = edgePass.uniforms; u.uThick.value = p.edge.thick; u.uDepthT.value = p.edge.depthT; u.uNormalT.value = p.edge.normalT; u.uStrength.value = p.edge.strength; u.uBoil.value = p.edge.boil; u.uFade.value = p.edge.fade || 0; u.uColor.value.set(...p.edge.color); }
+  edgePass.enabled = !!p.edge; if (p.edge) { const u = edgePass.uniforms; u.uThick.value = p.edge.thick; u.uDepthT.value = p.edge.depthT; u.uNormalT.value = p.edge.normalT; u.uStrength.value = p.edge.strength; u.uBoil.value = p.edge.boil; u.uFade.value = p.edge.fade || 0; u.uCoh.value = p.edge.coherence || 0; u.uColor.value.set(...p.edge.color); }
   tiltH.enabled = tiltV.enabled = !!p.tilt; if (p.tilt) for (const t of [tiltH, tiltV]) { t.uniforms.uAmount.value = p.tilt.amount; t.uniforms.uFocus.value = p.tilt.focus; t.uniforms.uWidth.value = p.tilt.width; }
   const g = grade.uniforms, gr = p.grade; g.uSat.value = gr.sat; g.uCon.value = gr.con; g.uVig.value = gr.vig; g.uSharp.value = gr.sharp; g.uCA.value = gr.ca; g.uGrain.value = gr.grain; g.uPoster.value = gr.poster; g.uPaper.value = gr.paper; g.uDots.value = p.halftone ? p.halftone.dots : 0; g.uDotSize.value = p.halftone ? p.halftone.size : 6; g.uShadowTint.value.set(...gr.shadowTint); g.uHighTint.value.set(...gr.highTint);
   renderer.toneMapping = TONE[p.tone] || THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = p.exposure;
   gtao.enabled = app.settings.quality !== 'medium' && p.gtao !== false;
   if (app.system) for (const pl of app.system.planets) { if (!pl.atBase) pl.atBase = { I: pl.uniforms.uAtI.value, K: pl.uniforms.uAtK.value }; pl.uniforms.uAtI.value = pl.atBase.I * st.atmo.sunI; pl.uniforms.uAtK.value = pl.atBase.K * st.atmo.aerial; }
   envT = -1e9; if (app.ui) app.ui.syncStyle();
-  // a style that asks for a different world mesh: rebuild now in the menu, otherwise it applies on the next launch
   // A style may ask for a different world mesh (Poly drops a subdivision and swaps card foliage for
   // solid trees). Rebuild for it immediately rather than leaving the player on the wrong mesh: in the
   // menu that is a regenerate, in a match it restarts the match, which is what picking a look mid-game
@@ -171,11 +177,15 @@ const ui = new UI(app); app.ui = ui;
 cam.onFocus = (p) => { app.system.setFocus(p); envT = -1e9; hemi.color.setRGB(...p.biome.hemiSky); hemi.groundColor.setRGB(...p.biome.hemiGround); ui.barDirty = true; };
 cam.onSystem = () => { ui.barDirty = true; };
 
-async function createWorld() {
+let createWorld = async function () {
   app.generating = true; $('loading').classList.remove('hidden');
   if (app.system) { scene.remove(app.system.group); app.system.dispose(); }
   if (app.fx && app.fx.dispose) app.fx.dispose();
   if (app.fxGroup) scene.remove(app.fxGroup);
+  // The frame loop skips everything while generating, but the camera and effects still hold the
+  // disposed world across the await below. Drop those references now so a stray touch fails loudly
+  // instead of reading freed GPU buffers.
+  app.system = null; app.fx = null; app.fxGroup = null; cam.system = null; cam.planet = null;
   const s = app.settings; const q = s.quality;
   const stWorld = (app.style && app.style.world) || (styleById(app.settings.style).world) || {};
   const detailMain = stWorld.detail || (q === 'medium' ? 7 : 8); app.worldDetail = detailMain;
@@ -188,7 +198,19 @@ async function createWorld() {
   app.focusPlanet(system.planets[0], null, 780);
   app.generating = false; app.worldUsed = false; $('loading').classList.add('hidden');
   if (app.style) app.setStyle(app.style.id); // after generating clears, so a mesh request made mid-build can still rebuild
-}
+};
+// Generation is the one long await between the player and a playable game. If it throws, the guard
+// flag stays set and the frame loop returns forever: a black screen under a loading card, with no
+// error anywhere the player can see. Always clear the flag, and say what happened.
+const createWorldRaw = createWorld;
+createWorld = async function () {
+  try { await createWorldRaw(); } catch (err) {
+    app.generating = false;
+    console.error('world generation failed', err);
+    $('loadingText').textContent = 'GENERATION FAILED - RELOAD';
+    throw err;
+  }
+};
 app.focusPlanet = (planet, dir, dist) => { cam.focus(planet, dir, dist); };
 app.regenPlanet = async () => { if (app.generating) return; $('loadingText').textContent = 'FORGING SYSTEM'; applyQuality(); await createWorld(); setupMenuCamera(); };
 function setupMenuCamera() { const p = app.system.planets[0]; cam.mode = 'planet'; cam.planet = p; cam.blend = 0; cam.setAnchor(p.spawns[0].dir.clone()); cam.dist = 820; cam.targetDist = 820; cam.spin = 0.03; cam.enabled = false; app.system.setFocus(p); }
@@ -213,7 +235,25 @@ function onGameOver(winner) { app.state = 'over'; app.overT = 0; app.winner = wi
 app.toMenu = async () => { if (app.generating) return; app.state = 'menu'; app.game = null; app.ai = null; ui.reset(); $('hud').classList.add('hidden'); $('gameover').classList.add('hidden'); await createWorld(); setupMenuCamera(); $('menu').classList.remove('hidden'); };
 app.togglePause = () => { if (app.state !== 'playing') return; app.paused = !app.paused; $('pauseTag').classList.toggle('hidden', !app.paused); ui.selDirty = true; };
 
-function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer.setSize(w, h); bloom.setSize(w, h); gtao.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); if (app.fx) app.fx.setViewport(w, h); const pr = renderer.getPixelRatio(); grade.uniforms.uTexel.value.set(1 / (w * pr), 1 / (h * pr)); edgePass.uniforms.uTexel.value.set(1 / (w * pr), 1 / (h * pr)); tiltH.uniforms.uTexel.value.set(1 / (w * pr), 1 / (h * pr)); tiltV.uniforms.uTexel.value.set(1 / (w * pr), 1 / (h * pr)); }
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  // composer.setSize already sizes bloom and GTAO at the device pixel ratio. Sizing them again in
+  // CSS pixels (as this used to) undid that and halved effective resolution on retina displays.
+  composer.setSize(w, h);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+  if (app.fx) app.fx.setViewport(w, h);
+  const pr = renderer.getPixelRatio();
+  const tx = 1 / (w * pr), ty = 1 / (h * pr);
+  grade.uniforms.uTexel.value.set(tx, ty);
+  edgePass.uniforms.uTexel.value.set(tx, ty);
+  tiltH.uniforms.uTexel.value.set(tx, ty);
+  tiltV.uniforms.uTexel.value.set(tx, ty);
+  // Ambient occlusion is by far the most expensive pass and its result is low frequency, so it runs
+  // at a fraction of the render resolution. Full resolution cost the house style a third of its
+  // frame rate for no visible gain.
+  gtao.setSize(Math.max(2, Math.round(w * pr * 0.55)), Math.max(2, Math.round(h * pr * 0.55)));
+}
 addEventListener('resize', resize);
 document.addEventListener('pointerdown', () => { audio.init(); audio.resume(); }, { capture: true });
 

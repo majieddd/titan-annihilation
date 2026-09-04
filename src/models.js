@@ -4,6 +4,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { DEFS } from './defs.js';
 import { getTextureSet } from './assets.js';
 import { injectFog } from './planet.js';
+import { STYLE_U } from './style.js';
 
 const COLORS = { base: [0.50, 0.53, 0.57], d: [0.20, 0.22, 0.25], l: [0.74, 0.76, 0.80], k: [0.07, 0.07, 0.08], t: [0.6, 0.6, 0.6] };
 const BASE_GEOS = {};
@@ -68,7 +69,7 @@ function bakeAO(g, own, spheres, off) {
   g.setAttribute('aAO', new THREE.BufferAttribute(ao, 1));
 }
 function partGeometry(part, idx) {
-  const [shape, x, y, z, sx, sy, sz, flags, rx, ry, rz] = part;
+  const [shape, x, y, z, sx, sy, sz, flags, rx, ry, rz, pvOverride] = part;
   let g;
   if (shape === 'rbox') { const r = Math.min(0.12, Math.min(sx, sy, sz) * 0.2); g = new RoundedBoxGeometry(sx, sy, sz, 2, r).toNonIndexed(); g.deleteAttribute('uv'); _s.set(1, 1, 1); }
   else { g = baseGeo(shape).clone(); _s.set(sx, sy, sz); }
@@ -79,7 +80,7 @@ function partGeometry(part, idx) {
   //   1 wheel/roller (rolls about its own X), 2 leg (swings about its top), 3 rotor (spins about Y),
   //   4 barrel (recoils along -Z). aPivot is the point that part turns about.
   const roleCh = (flags || '').includes('W') ? 1 : ((flags || '').includes('S') ? 2 : ((flags || '').includes('R') ? 3 : ((flags || '').includes('B') ? 4 : 0)));
-  const pvY = roleCh === 2 ? y + sy * 0.5 : y;
+  const pvY = pvOverride !== undefined ? pvOverride : (roleCh === 2 ? y + sy * 0.5 : y);
   { const role = new Float32Array(n), piv = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) { role[i] = roleCh; piv[i * 3] = x; piv[i * 3 + 1] = pvY; piv[i * 3 + 2] = z; }
     g.setAttribute('aRole', new THREE.BufferAttribute(role, 1)); g.setAttribute('aPivot', new THREE.BufferAttribute(piv, 3)); }
@@ -115,6 +116,48 @@ export function buildModel(def) {
   bodyGeo.computeBoundingSphere(); if (turretGeo) turretGeo.computeBoundingSphere();
   return { body: bodyGeo, turret: turretGeo, height: maxY, pivot };
 }
+// The animation runs in the vertex shader, so anything that also needs the animated pose — the
+// shadow (depth) pass, and the shading normal — has to run the exact same maths. Share one source of
+// truth rather than three drifting copies.
+const ANIM_ATTRS = `
+        attribute vec4 aVA; attribute vec4 aPR; attribute vec3 aMot; uniform float uStTime;
+        #define aRole aPR.w
+        #define aPivot aPR.xyz
+        float taAng() {
+          if (aRole < 1.5) return aMot.x;
+          if (aRole < 2.5) return sin(aMot.x + (aPivot.x < 0.0 ? 3.14159 : 0.0) + aPivot.z * 2.0) * 0.5 * aMot.z;
+          if (aRole < 3.5) return uStTime * 26.0;
+          return 0.0;
+        }
+        vec3 taRotX(vec3 v, float a) { return vec3(v.x, v.y * cos(a) - v.z * sin(a), v.y * sin(a) + v.z * cos(a)); }
+        vec3 taRotY(vec3 v, float a) { return vec3(v.x * cos(a) + v.z * sin(a), v.y, -v.x * sin(a) + v.z * cos(a)); }`;
+const ANIM_POS = `
+        if (aRole > 0.5) {
+          float ang = taAng(); vec3 rel = transformed - aPivot;
+          if (aRole < 2.5) transformed = aPivot + taRotX(rel, ang);
+          else if (aRole < 3.5) transformed = aPivot + taRotY(rel, ang);
+          else transformed.z -= aMot.y * 0.42;
+        }`;
+// Rotating the position without rotating the normal leaves a swinging leg lit as though it never
+// moved, which reads as a flat, dead limb however far it travels.
+const ANIM_NRM = `
+        if (aRole > 0.5 && aRole < 3.5) {
+          float ang2 = taAng();
+          objectNormal = aRole < 2.5 ? taRotX(objectNormal, ang2) : taRotY(objectNormal, ang2);
+        }`;
+/** Depth material matching the animated pose, so shadows swing with the parts that cast them. */
+function animDepthMaterial() {
+  const d = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  d.onBeforeCompile = (sh) => {
+    sh.uniforms.uStTime = STYLE_U.uStTime;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>' + ANIM_ATTRS)
+      .replace('#include <begin_vertex>', '#include <begin_vertex>' + ANIM_POS);
+  };
+  d.customProgramCacheKey = () => 'ta_anim_depth';
+  return d;
+}
+
 export function makeUnitMaterial(atmoU) {
   const panel = getTextureSet('panel');
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.55 });
@@ -123,22 +166,15 @@ export function makeUnitMaterial(atmoU) {
     shader.fragmentShader = '#define ST_HAS_TEAM\n' + shader.fragmentShader;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
-        attribute vec4 aVA; attribute vec4 aPR; attribute vec3 aTeamColor; attribute vec3 aInst; attribute float aEdge; attribute vec3 aMot; uniform float uStTime;
+` + ANIM_ATTRS + `
+        attribute vec3 aTeamColor; attribute vec3 aInst; attribute float aEdge;
         #define aTeam aVA.x
         #define aGlow aVA.y
         #define aHeight aVA.z
         #define aAO aVA.w
-        #define aRole aPR.w
-        #define aPivot aPR.xyz
         varying float vTeam; varying float vGlow; varying float vHeight; varying vec3 vTeamColor; varying vec3 vInst; varying vec3 vObj; varying vec3 vObjN; varying vec3 vR0; varying vec3 vR1; varying vec3 vR2; varying float vAO; varying float vEdge;`)
-      .replace('#include <begin_vertex>', `#include <begin_vertex>
-        if (aRole > 0.5) {
-          vec3 rel = transformed - aPivot; float ang = 0.0;
-          if (aRole < 1.5) { ang = aMot.x; transformed = aPivot + vec3(rel.x, rel.y * cos(ang) - rel.z * sin(ang), rel.y * sin(ang) + rel.z * cos(ang)); }
-          else if (aRole < 2.5) { ang = sin(aMot.x + aPivot.x * 4.0 + aPivot.z * 2.0) * 0.55 * aMot.z; transformed = aPivot + vec3(rel.x, rel.y * cos(ang) - rel.z * sin(ang), rel.y * sin(ang) + rel.z * cos(ang)); }
-          else if (aRole < 3.5) { ang = uStTime * 26.0; transformed = aPivot + vec3(rel.x * cos(ang) + rel.z * sin(ang), rel.y, -rel.x * sin(ang) + rel.z * cos(ang)); }
-          else { transformed.z -= aMot.y * 0.42; }
-        }
+      .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>` + ANIM_NRM)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>` + ANIM_POS + `
         vTeam = aTeam; vGlow = aGlow; vHeight = aHeight; vTeamColor = aTeamColor; vInst = aInst; vObj = position; vObjN = normal; vAO = aAO; vEdge = aEdge;
         #ifdef USE_INSTANCING
         vR0 = instanceMatrix[0].xyz; vR1 = instanceMatrix[1].xyz; vR2 = instanceMatrix[2].xyz;
@@ -192,9 +228,11 @@ function makeInstanced(geo, cap, material) {
   const g = geo.clone();
   g.setAttribute('aTeamColor', new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3));
   g.setAttribute('aInst', new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3));
-  g.setAttribute('aMot', new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3)); // phase, recoil, moving
+  g.setAttribute('aMot', new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3).setUsage(THREE.DynamicDrawUsage)); // phase, recoil, moving — rewritten every frame
   const mesh = new THREE.InstancedMesh(g, material, cap);
   mesh.count = 0; mesh.frustumCulled = false; mesh.castShadow = true; mesh.receiveShadow = true; mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  // Without this the shadow pass renders the rest pose, so a walking bot drags a rigid silhouette.
+  mesh.customDepthMaterial = animDepthMaterial();
   return mesh;
 }
 export class UnitRenderer {
@@ -217,8 +255,8 @@ export class UnitRenderer {
   }
   end() {
     for (const id in this.types) {
-      const t = this.types[id]; t.body.count = t.n; t.body.instanceMatrix.needsUpdate = true; t.bTeam.needsUpdate = true; t.bInst.needsUpdate = true;
-      if (t.turret) { t.turret.count = t.n; t.turret.instanceMatrix.needsUpdate = true; t.tTeam.needsUpdate = true; t.tInst.needsUpdate = true; }
+      const t = this.types[id]; t.body.count = t.n; t.body.instanceMatrix.needsUpdate = true; t.bTeam.needsUpdate = true; t.bInst.needsUpdate = true; t.bMot.needsUpdate = true;
+      if (t.turret) { t.turret.count = t.n; t.turret.instanceMatrix.needsUpdate = true; t.tTeam.needsUpdate = true; t.tInst.needsUpdate = true; if (t.tMot) t.tMot.needsUpdate = true; }
     }
   }
   createGhost(defId) {

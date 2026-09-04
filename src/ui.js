@@ -58,7 +58,7 @@ export class UI {
         if (e.ctrlKey || e.metaKey) { this.groups[n] = this.ownSel().slice(); e.preventDefault(); }
         else { const g = (this.groups[n] || []).filter((u) => !u.dead); if (g.length) { const now = performance.now(); if (this.lastKeyT[n] && now - this.lastKeyT[n] < 400) this.cam.jumpTo(g[0].planet, g[0].dir); this.lastKeyT[n] = now; this.select(g); } }
       }
-      else if (k === 'Delete') { for (const u of this.ownSel()) if (u.def.kind !== 'commander') this.game.kill(u, null); }
+      else if (k === 'Delete' && (e.ctrlKey || e.metaKey)) { for (const u of this.ownSel()) if (u.def.kind !== 'commander') this.game.kill(u, null); }
     });
     window.addEventListener('keyup', (e) => { if (e.key === 'Shift') this.shiftDown = false; });
     canvas.addEventListener('dblclick', (e) => { if (this.app.state !== 'playing' || this.placing) return; const u = this.pickUnit(e.clientX, e.clientY); if (u && u.team === 0) this.selectAllOfType(u.def.id); });

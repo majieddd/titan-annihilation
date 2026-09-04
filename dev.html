@@ -75,7 +75,7 @@ button.primary:hover{background:linear-gradient(180deg,#2a9ae0,#1462a0)}
 #tooltip .st{color:var(--dim)}
 #selbox{position:absolute;border:1px solid var(--acc);background:rgba(57,193,255,.12);pointer-events:none}
 #hint{position:absolute;left:50%;transform:translateX(-50%);bottom:190px;font-size:13px;letter-spacing:.12em;color:var(--acc);text-transform:uppercase;pointer-events:none;text-shadow:0 0 6px #000}
-#planetbar{position:absolute;left:50%;transform:translateX(-50%);top:52px;display:flex;gap:4px}
+#planetbar{position:absolute;left:50%;transform:translateX(-50%);top:52px;display:flex;gap:4px;flex-wrap:wrap;justify-content:center;max-width:calc(100% - 600px)}
 .pbtn{padding:3px 10px;font-size:12px;letter-spacing:.12em;display:flex;align-items:center;gap:6px}
 .pbtn .sw{width:8px;height:8px;border-radius:50%;display:inline-block;box-shadow:0 0 6px currentColor}
 .pbtn .cnt{color:var(--dim);font-size:11px;letter-spacing:.04em}
@@ -156,7 +156,7 @@ input[type=text]{font-family:inherit;background:rgba(0,0,0,.5);border:1px solid 
     <div class="opt"><label>Style</label><div class="seg" id="optStyle"><button data-v="polished" class="active">Polished</button><button data-v="realism">Realism</button><button data-v="cel">Cel</button><button data-v="spiderverse">Spider-Verse</button><button data-v="comic">Comic</button><button data-v="bar">BAR</button><button data-v="inksteel">Ink &amp; Steel</button><button data-v="reliquary">Reliquary</button><button data-v="coil">Coil</button><button data-v="poly">Poly</button><button data-v="dioramaink">Diorama Ink</button><button data-v="diorama">Diorama</button></div></div>
     <div id="styleHint"></div>
     <button class="primary" id="launch">LAUNCH</button>
-    <div id="help"><b>WASD / drag</b> orbit &nbsp; <b>Wheel</b> zoom (zoom out for the system view) &nbsp; <b>V</b> system view &nbsp; <b>Q/E</b> rotate &nbsp; <b>[ ]</b> art style<br><b>Left click / drag</b> select &nbsp; <b>Right click</b> move / attack (any planet) &nbsp; <b>A</b> attack-move &nbsp; <b>S</b> stop &nbsp; <b>N</b> nuke<br><b>Shift</b> queue / multi-place &nbsp; <b>Ctrl+1-9</b> groups &nbsp; <b>H</b> commander &nbsp; <b>Tab</b> idle fabber &nbsp; <b>P</b> pause<br>Orbital launchers build orbital fabbers that fly between planets. Link two teleporters to march ground armies across the system. Nukes hit any planet; anti-nukes stop them.</div>
+    <div id="help"><b>WASD / drag</b> orbit &nbsp; <b>Wheel</b> zoom (zoom out for the system view) &nbsp; <b>V</b> system view &nbsp; <b>Q/E</b> rotate &nbsp; <b>[ ]</b> art style &nbsp; <b>Ctrl+Del</b> scuttle selection<br><b>Left click / drag</b> select &nbsp; <b>Right click</b> move / attack (any planet) &nbsp; <b>A</b> attack-move &nbsp; <b>S</b> stop &nbsp; <b>N</b> nuke<br><b>Shift</b> queue / multi-place &nbsp; <b>Ctrl+1-9</b> groups &nbsp; <b>H</b> commander &nbsp; <b>Tab</b> idle fabber &nbsp; <b>P</b> pause<br>Orbital launchers build orbital fabbers that fly between planets. Link two teleporters to march ground armies across the system. Nukes hit any planet; anti-nukes stop them.</div>
   </div>
 </div>
 <div id="loading"><div class="spinner"></div><div id="loadingText">FORGING SYSTEM</div></div>

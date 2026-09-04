@@ -4,6 +4,44 @@ Standalone builds of each version live in `versions/` (double-click to play; nee
 The published artifact keeps its own version picker as well (labels match the entries below).
 The in-game menu shows the version number under the title.
 
+## v3.7.1 — 2026-09-03 — The ground stops crawling; an adversarial design review applied
+
+An adversarial review of the Polished Diorama Ink build. Two of the findings were the shimmer that had
+survived three previous attempts to kill it, and both were measured rather than guessed at.
+
+- **The crawling speckle on the ground is fixed, and this time it is the real cause.** It was two
+  separate effects wearing the same costume. The first is in the terrain shader: materials are blended
+  by picking a winner from the detail texture's height channel inside a narrow window, so wherever two
+  materials sit at near-equal weight — shorelines and hollows, exactly where it was reported — the
+  winner flipped from frame to frame as the mip level shifted under the camera. The height's authority
+  now fades with distance and the crossfade window widens, so the pair dissolves instead of competing.
+  The strata banding, which fed that same texture height into a sine and multiplied its noise by the
+  frequency, fades with it. Measured over a fixed patch of ground under a one-milliradian camera nudge,
+  the average pixel change falls from 2.21 to 0.005 at close range and from 1.82 to 0.14 at distance,
+  and the median pixel now does not change at all.
+- **The ink pass was outlining every blade of grass.** Grass cards are thin slivers, so the outline
+  detector drew a black ring around each one and the near ground turned to crawling stipple. A true
+  silhouette is locally a line: it breaks depth along one screen axis while the perpendicular axis stays
+  smooth, where foliage breaks both at once. Taking the smaller of the two axis gradients separates the
+  ink worth keeping from the noise, and every style that draws outlines now uses it. Unit and terrain
+  outlines are untouched.
+- **Walking units cast walking shadows, and their moving parts are lit correctly.** The animation runs
+  in the vertex shader, which the shadow pass and the shading normals were both ignoring: a striding bot
+  dragged a rigid silhouette and its legs were lit as though they had never moved. All three now share
+  one source of truth for the pose. The gait phase also wraps each turn, so the walk cycle cannot
+  quantise late in a long match.
+- **The AI no longer marches engineers into the sea.** A metal spot on another continent is placeable
+  but not walkable, so an engineer was sent across open water, stalled at the shoreline, and never gave
+  up, because the placement check kept saying yes. On the home world 41 of 76 spots are off-continent.
+  Ground builders now only target spots they can actually reach.
+- **Particles cost nothing when nothing is burning.** The effect pool drew its whole capacity every
+  frame from the title screen onward, culling dead slots inside the vertex shader after paying for them.
+- **A failed world generation now says so** instead of leaving a black screen under a loading card.
+- **A build guard for a bug that `node --check` cannot see.** A line comment spliced into a single-line
+  function silently swallows the rest of that physical line, statements included. That is what broke the
+  previous working build: a pixel-ratio declaration vanished mid-statement and the parser had no
+  complaint to make. The build now refuses to write output when a comment has live code behind it.
+
 ## v3.7.0 — 2026-09-03 — Polished Diorama Ink becomes the house style; every biome, canyons, moving parts
 - **Polished Diorama Ink** is the new default and the style to build around. It keeps the diorama's saturation, clay surfaces, rim light and gentle tilt-shift, adds the realism pass's soft glow, atmospheric mist and full-detail materials, and draws it all with hard black outlines and no dot, hatch or paper overlay.
 - **The shimmering noise is gone.** three widens roughness by the curvature of the geometric normal only, so a strong normal map still produced sub-pixel highlights that crawled as the camera moved — worst in the bright, high-normal styles and absent in the flat-shaded ones, exactly as reported. Roughness is now also widened by the shaded normal's own variance across the pixel, which is the standard cure and applies to every style.

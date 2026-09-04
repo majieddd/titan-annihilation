@@ -7,7 +7,9 @@ export const TEAM_COLORS = [[0.15, 0.62, 1.0], [1.0, 0.4, 0.1]];
 export const TEAM_NAMES = ['Player', 'Enemy Commander'];
 export const ECON = { energyPerMetal: 20, startMetal: 1000, startEnergy: 10000, storageMetal: 2500, storageEnergy: 30000 };
 
-const P = (shape, x, y, z, sx, sy, sz, flags = '', rx = 0, ry = 0, rz = 0) => [shape, x, y, z, sx, sy, sz, flags, rx, ry, rz];
+// pv: optional pivot height for animated parts. Every segment of one leg must turn about the same
+// hip point, otherwise the shin and foot rotate about their own centres and the limb separates.
+const P = (shape, x, y, z, sx, sy, sz, flags = '', rx = 0, ry = 0, rz = 0, pv) => [shape, x, y, z, sx, sy, sz, flags, rx, ry, rz, pv];
 const R = mulberry32(90210); // deterministic greeble randomness
 /** scatter small mechanical details on a horizontal surface centred at (cx,cy,cz) spanning sx by sz */
 function greeble(cx, cy, cz, sx, sz, n, flags = '') {
@@ -69,10 +71,10 @@ function botModel(s, opts = {}) {
     P('sph', -0.34 * s, 1.0 * s, 0, 0.32 * s, 0.32 * s, 0.32 * s, 'd'), P('sph', 0.34 * s, 1.0 * s, 0, 0.32 * s, 0.32 * s, 0.32 * s, 'd'),
     P('rbox', -0.32 * s, 0.75 * s, 0, 0.22 * s, 0.5 * s, 0.32 * s, 'S'), P('rbox', 0.32 * s, 0.75 * s, 0, 0.22 * s, 0.5 * s, 0.32 * s, 'S'),
     P('sph', -0.32 * s, 0.55 * s, 0, 0.3 * s, 0.3 * s, 0.3 * s, 'l'), P('sph', 0.32 * s, 0.55 * s, 0, 0.3 * s, 0.3 * s, 0.3 * s, 'l'),
-    P('rbox', -0.32 * s, 0.3 * s, 0.02 * s, 0.2 * s, 0.5 * s, 0.3 * s, 'dS'), P('rbox', 0.32 * s, 0.3 * s, 0.02 * s, 0.2 * s, 0.5 * s, 0.3 * s, 'dS'),
+    P('rbox', -0.32 * s, 0.3 * s, 0.02 * s, 0.2 * s, 0.5 * s, 0.3 * s, 'dS', 0, 0, 0, 1.0 * s), P('rbox', 0.32 * s, 0.3 * s, 0.02 * s, 0.2 * s, 0.5 * s, 0.3 * s, 'dS', 0, 0, 0, 1.0 * s),
     P('box', -0.32 * s, 0.32 * s, 0.19 * s, 0.16 * s, 0.4 * s, 0.05 * s, 'l'), P('box', 0.32 * s, 0.32 * s, 0.19 * s, 0.16 * s, 0.4 * s, 0.05 * s, 'l'),
     P('cyl', -0.32 * s, 0.32 * s, -0.19 * s, 0.07 * s, 0.42 * s, 0.07 * s, 'k'), P('cyl', 0.32 * s, 0.32 * s, -0.19 * s, 0.07 * s, 0.42 * s, 0.07 * s, 'k'),
-    P('box', -0.32 * s, 0.08 * s, 0.08 * s, 0.28 * s, 0.16 * s, 0.55 * s, 'kS'), P('box', 0.32 * s, 0.08 * s, 0.08 * s, 0.28 * s, 0.16 * s, 0.55 * s, 'kS'),
+    P('box', -0.32 * s, 0.08 * s, 0.08 * s, 0.28 * s, 0.16 * s, 0.55 * s, 'kS', 0, 0, 0, 1.0 * s), P('box', 0.32 * s, 0.08 * s, 0.08 * s, 0.28 * s, 0.16 * s, 0.55 * s, 'kS', 0, 0, 0, 1.0 * s),
     P('rbox', 0, 1.2 * s, 0, 0.9 * s, 0.7 * s, 0.7 * s, ''),
     P('rbox', 0, 1.25 * s, 0.36 * s, 0.6 * s, 0.4 * s, 0.1 * s, 't'),
     P('box', -0.18 * s, 1.0 * s, 0.37 * s, 0.14 * s, 0.03 * s, 0.03 * s, 'k'), P('box', 0, 1.0 * s, 0.37 * s, 0.14 * s, 0.03 * s, 0.03 * s, 'k'), P('box', 0.18 * s, 1.0 * s, 0.37 * s, 0.14 * s, 0.03 * s, 0.03 * s, 'k'),
@@ -106,11 +108,13 @@ function planeModel(s, opts = {}) {
     P('box', -0.2 * s, 0.25 * s, 0.3 * s, 0.05 * s, 0.14 * s, 0.4 * s, 'k'), P('box', 0.2 * s, 0.25 * s, 0.3 * s, 0.05 * s, 0.14 * s, 0.4 * s, 'k'),
   ];
   const span = (opts.span || 2.6) * s;
+  // A heli has no wing, so span-relative mounts left its hardware floating in open air.
+  const hard = opts.wing === 'heli' ? 0.34 * s : span * 0.5;
   if (opts.wing === 'delta') { parts.push(P('wdg', 0, 0.45 * s, -0.2 * s, span, 0.08 * s, 1.3 * s, 't', 0, 0, 0), P('box', -span * 0.42, 0.5 * s, -0.5 * s, 0.05 * s, 0.25 * s, 0.4 * s, 'l'), P('box', span * 0.42, 0.5 * s, -0.5 * s, 0.05 * s, 0.25 * s, 0.4 * s, 'l'), P('box', 0, 0.42 * s, -0.75 * s, span * 0.7, 0.03 * s, 0.14 * s, 'd')); }
   else if (opts.wing === 'heli') { parts.push(P('box', 0, 0.95 * s, 0, 3.4 * s, 0.05 * s, 0.25 * s, 'dR'), P('box', 0, 0.95 * s, 0, 0.25 * s, 0.05 * s, 3.4 * s, 'dR'), P('cyl', 0, 0.85 * s, 0, 0.2 * s, 0.2 * s, 0.2 * s, 'l'), P('cyl', 0, 0.78 * s, 0, 0.5 * s, 0.1 * s, 0.5 * s, 'k'), P('box', 0, 0.2 * s, 0, 0.5 * s, 0.1 * s, 0.8 * s, 'k')); }
-  else { parts.push(P('rbox', 0, 0.45 * s, -0.1 * s, span, 0.07 * s, 0.7 * s, 't'), P('box', 0, 0.44 * s, -0.42 * s, span * 0.85, 0.04 * s, 0.14 * s, 'd'), P('box', -span * 0.5, 0.45 * s, -0.3 * s, 0.1 * s, 0.35 * s, 0.6 * s, 'd'), P('box', span * 0.5, 0.45 * s, -0.3 * s, 0.1 * s, 0.35 * s, 0.6 * s, 'd')); }
-  parts.push(P('box', -span * 0.5, 0.5 * s, -0.1 * s, 0.08 * s, 0.05 * s, 0.08 * s, 'G'), P('box', span * 0.5, 0.5 * s, -0.1 * s, 0.08 * s, 0.05 * s, 0.08 * s, 'G'));
-  if (opts.pods) { parts.push(P('cylz', -span * 0.3, 0.3 * s, 0, 0.22 * s, 0.22 * s, 1.0 * s, 'd'), P('cylz', span * 0.3, 0.3 * s, 0, 0.22 * s, 0.22 * s, 1.0 * s, 'd'), P('conez', -span * 0.3, 0.3 * s, 0.6 * s, 0.22 * s, 0.22 * s, 0.25 * s, 'l'), P('conez', span * 0.3, 0.3 * s, 0.6 * s, 0.22 * s, 0.22 * s, 0.25 * s, 'l'), P('box', -span * 0.3, 0.4 * s, 0, 0.06 * s, 0.1 * s, 0.4 * s, 'k'), P('box', span * 0.3, 0.4 * s, 0, 0.06 * s, 0.1 * s, 0.4 * s, 'k')); }
+  else { parts.push(P('rbox', 0, 0.45 * s, -0.1 * s, span, 0.07 * s, 0.7 * s, 't'), P('box', 0, 0.44 * s, -0.42 * s, span * 0.85, 0.04 * s, 0.14 * s, 'd'), P('box', -hard, 0.45 * s, -0.3 * s, 0.1 * s, 0.35 * s, 0.6 * s, 'd'), P('box', hard, 0.45 * s, -0.3 * s, 0.1 * s, 0.35 * s, 0.6 * s, 'd')); }
+  parts.push(P('box', -hard, 0.5 * s, -0.1 * s, 0.08 * s, 0.05 * s, 0.08 * s, 'G'), P('box', hard, 0.5 * s, -0.1 * s, 0.08 * s, 0.05 * s, 0.08 * s, 'G'));
+  if (opts.pods) { parts.push(P('cylz', -hard * 0.6, 0.3 * s, 0, 0.22 * s, 0.22 * s, 1.0 * s, 'd'), P('cylz', hard * 0.6, 0.3 * s, 0, 0.22 * s, 0.22 * s, 1.0 * s, 'd'), P('conez', -hard * 0.6, 0.3 * s, 0.6 * s, 0.22 * s, 0.22 * s, 0.25 * s, 'l'), P('conez', hard * 0.6, 0.3 * s, 0.6 * s, 0.22 * s, 0.22 * s, 0.25 * s, 'l'), P('box', -hard * 0.6, 0.4 * s, 0, 0.06 * s, 0.1 * s, 0.4 * s, 'k'), P('box', hard * 0.6, 0.4 * s, 0, 0.06 * s, 0.1 * s, 0.4 * s, 'k')); }
   return { parts, height: 1.1 * s };
 }
 function factoryModel(w, l, h, tier, kind) {
@@ -153,9 +157,9 @@ def('commander', {
     { type: 'uber', range: 42, dmg: 3200, rof: 0.12, splash: 9, targets: 'g', speed: 70, color: [1.0, 0.9, 0.3] },
   ],
   model: [
-    P('box', -0.75, 1.0, 0, 0.7, 2.0, 0.9, 'd'), P('box', 0.75, 1.0, 0, 0.7, 2.0, 0.9, 'd'),
-    P('sph', -0.75, 1.15, 0, 0.9, 0.9, 0.9, 'l'), P('sph', 0.75, 1.15, 0, 0.9, 0.9, 0.9, 'l'),
-    P('box', -0.75, 0.25, 0.25, 0.95, 0.5, 1.4, 'k'), P('box', 0.75, 0.25, 0.25, 0.95, 0.5, 1.4, 'k'),
+    P('box', -0.75, 1.0, 0, 0.7, 2.0, 0.9, 'dS', 0, 0, 0, 2.0), P('box', 0.75, 1.0, 0, 0.7, 2.0, 0.9, 'dS', 0, 0, 0, 2.0),
+    P('sph', -0.75, 1.15, 0, 0.9, 0.9, 0.9, 'lS', 0, 0, 0, 2.0), P('sph', 0.75, 1.15, 0, 0.9, 0.9, 0.9, 'lS', 0, 0, 0, 2.0),
+    P('box', -0.75, 0.25, 0.25, 0.95, 0.5, 1.4, 'kS', 0, 0, 0, 2.0), P('box', 0.75, 0.25, 0.25, 0.95, 0.5, 1.4, 'kS', 0, 0, 0, 2.0),
     P('box', 0, 2.2, 0, 1.6, 0.6, 1.1, 'd'),
     P('box', 0, 3.2, 0, 2.4, 1.6, 1.5, ''),
     P('box', 0, 3.2, 0.78, 1.7, 1.1, 0.25, 't'),
@@ -248,8 +252,8 @@ def('antinuke', { name: 'Anti-Nuke', kind: 'structure', tier: 2, cost: 2600, hp:
 def('ares', { name: 'Ares', kind: 'titan', tier: 3, cost: 24000, hp: 42000, speed: 6.5, turn: 1.2, radius: 5.5, height: 18, layer: 'ground', icon: 'titan', desc: 'Walking titan. Devastating dual cannons and missile racks.', deathSize: 5,
   weapons: [{ type: 'cannon', range: 95, dmg: 900, rof: 0.5, splash: 9, targets: 'g', speed: 85, arc: 0.6, turret: true }, { type: 'missile', range: 80, dmg: 160, rof: 2.0, splash: 3, targets: 'ga', speed: 90 }], turretPivot: [0, 12.5, 0],
   model: [
-    P('box', -3.2, 3.5, 0, 2.0, 7.0, 2.6, 'd'), P('box', 3.2, 3.5, 0, 2.0, 7.0, 2.6, 'd'),
-    P('box', -3.2, 0.8, 0.5, 2.8, 1.6, 4.4, 'k'), P('box', 3.2, 0.8, 0.5, 2.8, 1.6, 4.4, 'k'),
+    P('box', -3.2, 3.5, 0, 2.0, 7.0, 2.6, 'dS', 0, 0, 0, 7.0), P('box', 3.2, 3.5, 0, 2.0, 7.0, 2.6, 'dS', 0, 0, 0, 7.0),
+    P('box', -3.2, 0.8, 0.5, 2.8, 1.6, 4.4, 'kS', 0, 0, 0, 7.0), P('box', 3.2, 0.8, 0.5, 2.8, 1.6, 4.4, 'kS', 0, 0, 0, 7.0),
     P('box', -3.2, 7.4, 0, 2.6, 1.6, 3.2, 'l'), P('box', 3.2, 7.4, 0, 2.6, 1.6, 3.2, 'l'),
     P('sph', -3.2, 4.2, 0, 2.6, 2.6, 2.6, 'l'), P('sph', 3.2, 4.2, 0, 2.6, 2.6, 2.6, 'l'),
     P('box', 0, 8.5, 0, 6.0, 2.0, 4.0, ''), P('wdg', 0, 10.6, 0.2, 7.5, 2.4, 6.0, 't'),

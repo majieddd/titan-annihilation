@@ -178,12 +178,11 @@ export function injectFog(mat, uniforms, key) {
     shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vAtW;').replace('#include <project_vertex>', '#include <project_vertex>\nvec4 atwp = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\natwp = instanceMatrix * atwp;\n#endif\nvAtW = (modelMatrix * atwp).xyz;');
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + ATMO_GLSL + '\n' + STYLE_GLSL + '\nvarying vec3 vAtW;')
       .replace('#include <alphamap_fragment>', 'diffuseColor.rgb = stSat(stPoster(diffuseColor.rgb, uStPoster), uStSat);\n#include <alphamap_fragment>')
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, max(roughnessFactor, 0.72), smoothstep(70.0, 300.0, length(vViewPosition)));')
-      // Specular antialiasing. three widens roughness by the curvature of the GEOMETRIC normal only,
+            // Specular antialiasing. three widens roughness by the curvature of the GEOMETRIC normal only,
       // so a strong normal map still produces sub-pixel highlights that crawl as the camera moves
       // (the shimmer on the bright, high-normal styles). Widen it by the SHADED normal's variance too.
-      .replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n{ vec3 stNdx = dFdx(normal), stNdy = dFdy(normal); float stNv = max(dot(stNdx, stNdx), dot(stNdy, stNdy)); material.roughness = min(1.0, sqrt(material.roughness * material.roughness + stNv * 1.6)); }')
-      .replace('#include <emissivemap_fragment>', 'normal = normalize(mix(nonPerturbedNormal, normal, uStNormal * (1.0 - 0.9 * smoothstep(70.0, 300.0, length(vViewPosition)))));\n#ifndef USE_ALPHATEST\nif (uStFlat > 0.5) { vec3 stFn = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition))); if (dot(stFn, nonPerturbedNormal) < 0.0) stFn = -stFn; normal = stFn; }\n#endif\n#include <emissivemap_fragment>')
+      .replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n{ vec3 stNdx = dFdx(normal), stNdy = dFdy(normal); float stNv = max(dot(stNdx, stNdx), dot(stNdy, stNdy)); material.roughness = min(1.0, sqrt(material.roughness * material.roughness + stNv * 3.0));\n  material.roughness = mix(material.roughness, max(material.roughness, 0.78), smoothstep(25.0, 130.0, length(vViewPosition))); }')
+      .replace('#include <emissivemap_fragment>', 'normal = normalize(mix(nonPerturbedNormal, normal, uStNormal * (1.0 - 0.92 * smoothstep(25.0, 140.0, length(vViewPosition)))));\n#ifndef USE_ALPHATEST\nif (uStFlat > 0.5) { vec3 stFn = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition))); if (dot(stFn, nonPerturbedNormal) < 0.0) stFn = -stFn; normal = stFn; }\n#endif\n#include <emissivemap_fragment>')
       .replace('#include <opaque_fragment>', STYLE_LIGHT_GLSL + '\n#include <opaque_fragment>')
       .replace('#include <tonemapping_fragment>', '{ vec3 atT, atS; atAerial(cameraPosition, vAtW, atT, atS); gl_FragColor.rgb = gl_FragColor.rgb * atT + atS; }\n#include <tonemapping_fragment>');
   };
@@ -245,20 +244,33 @@ function makeTerrainMaterial(planet, tA, tB, tC) {
         if (m.y > 0.002) { sb = mix(tri(tB, p1, bw), triR(tB, p2, bw), 0.45); nb = triN(tBN, p1, gn, bw); }
         if (m.z > 0.002) { sc = mix(tri(tC, p1, bw), triR(tC, p2, bw), 0.45); nc = triN(tCN, p1, gn, bw); }
         float hA = (sa.a - 0.3) / 0.7, hB = (sb.a - 0.3) / 0.7, hC = (sc.a - 0.3) / 0.7;
-        float ha = m.x > 0.002 ? m.x + hA * 0.7 : -1.0, hb = m.y > 0.002 ? m.y + hB * 0.7 : -1.0, hc = m.z > 0.002 ? m.z + hC * 0.7 : -1.0;
-        float ma = max(ha, max(hb, hc)) - 0.22; vec3 w = max(vec3(ha, hb, hc) - ma, 0.0); w /= (w.x + w.y + w.z);
+        // Height blending picks a winning material from the detail texture's height channel. Once that
+        // texture is near or past a pixel wide, the sampled height wobbles with the mip level and the
+        // winner flips from frame to frame — the crawling speckle that showed up on shores and in
+        // hollows, where two materials sit at nearly equal weight. Fade the height's authority out with
+        // distance and widen the crossfade window so the pair dissolves smoothly instead of competing.
+        float dV = length(vViewPosition);
+        float hFade = smoothstep(18.0, 130.0, dV);
+        float hAuth = 0.7 * (1.0 - 0.88 * hFade);
+        float ha = m.x > 0.002 ? m.x + hA * hAuth : -1.0, hb = m.y > 0.002 ? m.y + hB * hAuth : -1.0, hc = m.z > 0.002 ? m.z + hC * hAuth : -1.0;
+        float win = mix(0.22, 0.62, hFade);
+        float ma = max(ha, max(hb, hc)) - win; vec3 w = max(vec3(ha, hb, hc) - ma, 0.0); w /= (w.x + w.y + w.z);
         vec3 det = sa.rgb * w.x + sb.rgb * w.y + sc.rgb * w.z;
         float el = length(vLPos) - uR;
-        float strata = 0.5 + 0.5 * sin(el * 1.4 + hB * 5.0 + hA * 2.0);
-        det *= mix(1.0, 0.84 + 0.3 * strata, w.y);
-        float stFade = smoothstep(70.0, 320.0, length(vViewPosition));
-        det = mix(det, vec3(dot(det, vec3(0.3333))), stFade * 0.75);
+        // sin() of a texture-height term multiplies its noise by the frequency, so the strata band was
+        // the loudest shimmer of the lot. Drop the texture-driven phase as it stops being resolvable.
+        float strata = 0.5 + 0.5 * sin(el * 1.4 + (hB * 5.0 + hA * 2.0) * (1.0 - hFade));
+        det *= mix(1.0, 0.84 + 0.3 * strata * (1.0 - 0.5 * hFade), w.y);
+        float stFade = smoothstep(30.0, 150.0, length(vViewPosition));
+        det = mix(det, vec3(dot(det, vec3(0.3333))), stFade * 0.85);
         diffuseColor.rgb *= det * uAlb;`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         roughnessFactor = clamp(na.a * w.x + nb.a * w.y + nc.a * w.z, 0.05, 1.0);
         if (uSea > 0.5) roughnessFactor *= mix(0.35, 1.0, smoothstep(0.0, 3.0, el));`)
       .replace('#include <normal_fragment_maps>', `
-        vec3 wn = normalize(mix(gn, normalize(na.xyz * w.x + nb.xyz * w.y + nc.xyz * w.z), 0.9));
+        // Normal-map detail that is finer than a pixel only produces specular sparkle. Relax toward the
+        // geometric normal at range; this is what gives the far field the soft, even sheen.
+        vec3 wn = normalize(mix(gn, normalize(na.xyz * w.x + nb.xyz * w.y + nc.xyz * w.z), 0.9 * (1.0 - 0.65 * hFade)));
         normal = normalize((viewMatrix * vec4(wn, 0.0)).xyz);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         if (uLava > 0.5) { vec3 em = uHasBE > 0.5 ? pow(tri(tBE, p1, bw).rgb, vec3(1.6)) * 1.6 : (1.0 - smoothstep(0.04, 0.16, hB)) * vec3(1.0, 0.42, 0.08) * 2.4; totalEmissiveRadiance += w.y * em; }`);
@@ -304,12 +316,21 @@ export class Planet {
         if (nav.verts[i * 3] * this.sunDir.x + nav.verts[i * 3 + 1] * this.sunDir.y + nav.verts[i * 3 + 2] * this.sunDir.z < 0.2) continue;
         candidates.push(i);
       }
+      const cc = this.labelComponents(rawPass); let passN = 0; for (let i = 0; i < nav.count; i++) if (rawPass[i]) passN++;
+      const minComp = Math.max(30, passN * 0.05);
       const score = (i) => { _v1.set(nav.verts[i * 3], nav.verts[i * 3 + 1], nav.verts[i * 3 + 2]); const nodes = this.nodesWithin(_v1, 34); let s = 0; for (const n of nodes) if (rawPass[n] && rawE[n] > 1) s++; return s; };
-      let bestA = -1, bestS = -1; for (const c of candidates) { const s = score(c); if (s > bestS) { bestS = s; bestA = c; } }
+      // Only consider candidates in a component big enough to hold a base and its expansion.
+      const roomy = candidates.filter((c) => cc.comp[c] >= 0 && cc.size[cc.comp[c]] >= minComp);
+      const pool = roomy.length ? roomy : candidates;
+      let bestA = -1, bestS = -1; for (const c of pool) { const s = score(c); if (s > bestS) { bestS = s; bestA = c; } }
       if (bestA < 0) bestA = 0;
       const aDir = new THREE.Vector3(nav.verts[bestA * 3], nav.verts[bestA * 3 + 1], nav.verts[bestA * 3 + 2]);
       let bestB = -1; bestS = -1;
-      for (const c of candidates) { _v2.set(nav.verts[c * 3], nav.verts[c * 3 + 1], nav.verts[c * 3 + 2]); if (_v2.dot(aDir) > Math.cos(1.7)) continue; const s = score(c); if (s > bestS) { bestS = s; bestB = c; } }
+      // The second base MUST be reachable from the first, or neither side can ever attack.
+      const aComp = cc.comp[bestA];
+      for (const c of pool) { if (cc.comp[c] !== aComp) continue; _v2.set(nav.verts[c * 3], nav.verts[c * 3 + 1], nav.verts[c * 3 + 2]); if (_v2.dot(aDir) > Math.cos(1.7)) continue; const s = score(c); if (s > bestS) { bestS = s; bestB = c; } }
+      // Relax the separation before ever giving up on connectivity.
+      if (bestB < 0) { let far = -1, fs = 2; for (const c of pool) { if (cc.comp[c] !== aComp || c === bestA) continue; _v2.set(nav.verts[c * 3], nav.verts[c * 3 + 1], nav.verts[c * 3 + 2]); const d = _v2.dot(aDir); if (d < fs) { fs = d; far = c; } } if (far >= 0) bestB = far; }
       if (bestB < 0) { _v2.copy(this.sunDir).multiplyScalar(0.4).sub(aDir).normalize(); bestB = this.nav.lookup.nearest(_v2.x, _v2.y, _v2.z); }
       const bDir = new THREE.Vector3(nav.verts[bestB * 3], nav.verts[bestB * 3 + 1], nav.verts[bestB * 3 + 2]);
       for (const d of [aDir, bDir]) { const e = clamp(this.rawElev(d.x, d.y, d.z), 2.5, 7); this.spawns.push({ dir: d, elev: e, pos: new THREE.Vector3() }); }
@@ -335,6 +356,7 @@ export class Planet {
     this.navElev = new Float32Array(nav.count);
     for (let i = 0; i < nav.count; i++) this.navElev[i] = this.elev(nav.verts[i * 3], nav.verts[i * 3 + 1], nav.verts[i * 3 + 2]);
     this.nav.pass = this.computePassable(this.navElev, (x, y, z) => this.elev(x, y, z)); this.nav.blocked = new Uint8Array(nav.count);
+    { const cc = this.labelComponents(this.nav.pass); this.nav.comp = cc.comp; this.nav.compSize = cc.size; }
     // ambient occlusion from local concavity (2-ring mean elevation)
     this.navAO = new Float32Array(nav.count);
     for (let i = 0; i < nav.count; i++) {
@@ -379,6 +401,21 @@ export class Planet {
     this.buildMeshes();
     this.genTime = performance.now() - t0;
   }
+  /** Label connected components of a passability array over the nav graph. Terrain this rugged is
+      not one connected region, so "is this node passable" is not the same question as "can a unit
+      actually get there from my base" - spawn placement and order validation both need the latter. */
+  labelComponents(pass) {
+    const nav = this.nav, n = nav.count; const comp = new Int32Array(n).fill(-1); const size = [];
+    const stack = new Int32Array(n);
+    for (let s = 0; s < n; s++) {
+      if (comp[s] !== -1 || !pass[s]) continue;
+      const id = size.length; let sp = 0, cnt = 0; stack[sp++] = s; comp[s] = id;
+      while (sp > 0) { const v = stack[--sp]; cnt++;
+        for (let k = nav.adjStart[v], e = nav.adjStart[v + 1]; k < e; k++) { const u = nav.adjList[k]; if (comp[u] === -1 && pass[u]) { comp[u] = id; stack[sp++] = u; } } }
+      size.push(cnt);
+    }
+    return { comp, size };
+  }
   computePassable(elev, elevFn) {
     const nav = this.nav; const pass = new Uint8Array(nav.count); const R = this.R; const seaLimit = this.biome.sea ? 0.9 : -1e9;
     for (let i = 0; i < nav.count; i++) {
@@ -400,7 +437,7 @@ export class Planet {
     // channel crossing a range keeps the range's own roughness and stops being a walkable route.
     let cm = 0;
     { const cq = b.canyon;
-      if (cq && cq.depth > 0) {
+      if (cq && cq.depth > 0 && e > 1.5) { // e is exactly c*9 here, and the gate below is 0 at or under 1.5
         const cw = nz.fbm(X * cq.freq + o[1] * 1.7, Y * cq.freq + 5.2, Z * cq.freq + o[2] * 1.3, 3, 2.0, 0.5);
         let m = 1 - smoothstep(cq.floorW, cq.floorW + cq.wallW, Math.abs(cw));
         const cw2 = nz.fbm(X * cq.freq * 2.35 + 12.9, Y * cq.freq * 2.35 + o[0], Z * cq.freq * 2.35 + 3.1, 2, 2.0, 0.5);
@@ -484,6 +521,8 @@ export class Planet {
   isWater(dir) { return this.biome.sea && this.heightAt(dir) < this.R + 0.3; }
   navNode(dir) { return this.nav.lookup.nearest(dir.x, dir.y, dir.z); }
   isPassable(dir) { const n = this.navNode(dir); return this.nav.pass[n] === 1 && this.nav.blocked[n] === 0; }
+  /** can a ground unit at `a` ever walk to `b`, ignoring temporary blockers? */
+  sameComponent(a, b) { const ca = this.nav.comp[this.navNode(a)], cb = this.nav.comp[this.navNode(b)]; return ca >= 0 && ca === cb; }
   isPassableNode(n) { return this.nav.pass[n] === 1 && this.nav.blocked[n] === 0; }
   isPassableNodeRaw(n) { return this.nav.pass[n] === 1; }
   nodeDir(n, out) { const V = this.nav.verts; return out.set(V[n * 3], V[n * 3 + 1], V[n * 3 + 2]); }

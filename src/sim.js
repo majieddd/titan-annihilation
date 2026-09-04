@@ -50,7 +50,7 @@ export class Game {
       id: nextId++, def, team, planet, pos: new THREE.Vector3(), dir: dir.clone().normalize(), fwd: new THREE.Vector3(), quat: new THREE.Quaternion(),
       hp: 0, progress: opts.progress ?? 1, built: false, orders: [], path: null, pathIdx: 0, pathGoal: null, pathPending: false,
       target: null, attackTarget: null, engage: 'idle', moveGoal: null, holdFacing: null, cd: def.weapons ? def.weapons.map(() => 0) : null, scanT: Math.random() * 0.3,
-      turret: 0, turretGoal: 0, speed: 0, alt: 0, flash: 0, phase: 0, recoil: 0, stuck: 0, stuckT: 0, lastGoalDist: 1e9, giveUp: 0, dead: false, drop: opts.drop || 0,
+      turret: 0, turretGoal: 0, speed: 0, alt: 0, flash: 0, phase: 0, recoil: 0, lastWpIdx: -1, stuck: 0, stuckT: 0, lastGoalDist: 1e9, giveUp: 0, dead: false, drop: opts.drop || 0,
       moving: false, yawRate: 0, roll: 0, building: null, ai: null, spot: null, loiter: null, overshoot: null, bobPhase: Math.random() * 6.28, assist: 0,
       factory: def.factory ? { queue: [], current: null, loop: false, rally: null } : null, parentFactory: null, lastHitT: -99, killedBy: null, lastBuildT: this.time,
       transit: null, link: null, silo: def.silo ? { progress: 0, ammo: 0, active: true } : null,
@@ -204,7 +204,9 @@ export class Game {
     while (budget-- > 0 && this.pathQueue.length) {
       const u = this.pathQueue.shift(); u.pathPending = false; if (u.dead || !u.moveGoal || u.transit) continue;
       u.path = u.planet.findPath(u.dir, u.moveGoal); u.pathIdx = 0; u.pathGoal = u.moveGoal.clone();
-      if (!u.path && !u.planet.isPassable(u.moveGoal)) this.finishOrder(u); // unreachable: stop, do not swim there
+      // Unreachable means impassable ground OR a goal in a different walkable component - without
+      // the second test a failed path fell through to a straight line across the sea.
+      if (!u.path && (!u.planet.isPassable(u.moveGoal) || !u.planet.sameComponent(u.dir, u.moveGoal))) this.finishOrder(u);
     }
     for (const u of this.units) if (!u.dead) this.updateUnit(u, dt);
     if (this.tick % 90 === 0) for (const u of this.units) { if (!u.dead && !u.built && u.progress <= 0 && u.def.kind !== 'commander' && this.time - u.lastBuildT > 30) this.removeGhost(u); }
@@ -216,7 +218,10 @@ export class Game {
   }
   updateUnit(u, dt) {
     // wheels roll and legs swing off distance travelled, so motion matches the ground speed
-    if (u.def.mobile) u.phase += u.speed * dt * (u.def.kind === 'bot' ? 1.15 : 1.7);
+    // Wrap the gait phase. It is uploaded as a float32 and fed to sin(); left to grow it reaches five
+    // figures in a long match, where float32 steps are coarse enough to make the walk cycle visibly
+    // stutter. The angle is meaningless beyond one turn anyway.
+    if (u.def.mobile) u.phase = (u.phase + u.speed * dt * (u.def.kind === 'bot' ? 1.15 : 1.7)) % 6.283185307179586;
     if (u.recoil > 0) u.recoil = Math.max(0, u.recoil - dt * 4.5);
     const def = u.def;
     if (u.flash > 0) u.flash *= Math.exp(-dt * 7);
@@ -624,7 +629,12 @@ export class Game {
       moveOnSphere(u.dir, u.fwd, u.speed * dt / R, u.dir); projectTangent(u.dir, u.fwd).normalize();
       u.moving = u.speed > 0.5; u.stuckT += dt;
       if (u.stuckT > 0.8) {
-        u.stuckT = 0; if (remaining > u.lastGoalDist - 0.4) u.stuck++; else u.stuck = 0; u.lastGoalDist = remaining;
+        // measure progress toward the CURRENT waypoint: a legitimate detour around a canyon wall
+        // increases the distance to the final goal and used to be punished as being stuck
+        u.stuckT = 0; const prog = (u.path && u.pathIdx < u.path.length) ? angleBetween(u.dir, u.path[u.pathIdx]) * R : remaining;
+        if (u.pathIdx !== u.lastWpIdx) { u.lastWpIdx = u.pathIdx; u.stuck = 0; u.lastGoalDist = prog; }
+        else if (prog > u.lastGoalDist - 0.4) u.stuck++; else { u.stuck = 0; u.giveUp = 0; }
+        u.lastGoalDist = prog;
         if (u.stuck >= 3) { u.stuck = 0; u.path = null; u.pathGoal = null; rotateTangent(u.dir, u.fwd, (Math.random() - 0.5) * 2.5, _e); u.fwd.copy(_e).normalize(); if (++u.giveUp > 5 && u.orders.length) this.finishOrder(u); }
       }
     } else {
