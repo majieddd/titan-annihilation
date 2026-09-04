@@ -23,11 +23,11 @@ import { mulberry32, hashString, clamp, Simplex, VERSION } from './util.js';
 
 const STEP = 1 / 60;
 const $ = (id) => document.getElementById(id);
-const app = { state: 'loading', paused: false, settings: { difficulty: 'normal', biome: 'earth', seed: 'titan', quality: 'high', planets: 3, style: 'realism' }, game: null, ai: null, system: null, fx: null, fxGroup: null };
+const app = { state: 'loading', paused: false, settings: { difficulty: 'normal', biome: 'earth', seed: 'titan', quality: 'high', planets: 5, style: 'polished' }, game: null, ai: null, system: null, fx: null, fxGroup: null };
 try { const s = JSON.parse(localStorage.getItem('ta_settings') || 'null'); if (s) Object.assign(app.settings, s); } catch (e) { }
 if (!['medium', 'high', 'ultra'].includes(app.settings.quality)) app.settings.quality = 'high';
-if (![2, 3, 4].includes(app.settings.planets)) app.settings.planets = 3;
-if (!STYLES.some((s) => s.id === app.settings.style)) app.settings.style = 'realism';
+if (![2, 3, 4, 5].includes(app.settings.planets)) app.settings.planets = 5;
+if (!STYLES.some((s) => s.id === app.settings.style)) app.settings.style = 'polished';
 window.__app = app;
 
 // ---------- renderer / scene ----------
@@ -228,7 +228,7 @@ function renderUnits(time) {
       if (u.def.kind === 'bot' && u.moving) _pos.addScaledVector(u.dir, Math.abs(Math.sin(time * 14 + u.bobPhase)) * 0.12);
       _m.compose(_pos, u.quat, _one); let tm = null;
       if (u.def.hasTurret) { const pv = unitRenderer.models[u.def.id].pivot; _pm.makeTranslation(pv[0], pv[1], pv[2]); _rm.makeRotationY(u.turret); tm = _tm.copy(_m).multiply(_pm).multiply(_rm); }
-      unitRenderer.add(u.def.id, _m, TEAM_COLORS[u.team], prog, u.flash, tm, u.team);
+      unitRenderer.add(u.def.id, _m, TEAM_COLORS[u.team], prog, u.flash, tm, u.team, u.phase || 0, u.recoil || 0, u.moving ? 1 : 0);
     }
   }
   unitRenderer.end();

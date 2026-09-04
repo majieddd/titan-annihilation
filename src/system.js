@@ -10,19 +10,24 @@ const OTHER_NAMES = ['Brannoch', 'Ashfall', 'Rime', 'Dune', 'Cinder', 'Hollow', 
 
 export class StarSystem {
   constructor({ seed = 1, biome = 'earth', planetCount = 3, quality = 'high', detailMain = 7, detailOther = 6 } = {}) {
-    this.seed = seed >>> 0; this.biome = biome; this.planetCount = clamp(planetCount, 1, 4); this.quality = quality; this.detailMain = detailMain; this.detailOther = detailOther;
+    this.seed = seed >>> 0; this.biome = biome; this.planetCount = clamp(planetCount, 1, 5); this.quality = quality; this.detailMain = detailMain; this.detailOther = detailOther;
     this.group = new THREE.Group(); this.planets = []; this.sunPos = new THREE.Vector3();
   }
   layout() {
     const rng = mulberry32((this.seed ^ 0x5bd1e995) >>> 0);
-    const pick = (arr, exclude) => { const a = arr.filter((x) => x !== exclude); return a[Math.floor(rng() * a.length)]; };
+    // Every system shows every world type: the menu's choice is the home planet, and the remaining
+    // slots take the other biomes in a seed-shuffled order so nothing repeats before all five appear.
+    const rest = ['earth', 'lava', 'ice', 'desert', 'moon'].filter((x) => x !== this.biome);
+    for (let i = rest.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); const t = rest[i]; rest[i] = rest[j]; rest[j] = t; }
+    let rp = 0; const next = () => rest[rp++ % rest.length];
     const nm = (arr) => arr[Math.floor(rng() * arr.length)];
     const a0 = rng() * TAU; const detailMain = this.detailMain, detailSec = this.detailOther;
     return [
       { R: 320, orbit: 2600, ang: a0, y: 0, biome: this.biome, isMain: true, name: nm(MAIN_NAMES), detail: detailMain },
-      { R: 150, parent: 0, orbit: 1250, ang: rng() * TAU, y: 140 + rng() * 120, biome: pick(['moon', 'ice', 'desert'], null), name: nm(MOON_NAMES), detail: detailSec },
-      { R: 230, orbit: 4100, ang: a0 + 1.9 + rng() * 0.8, y: -160, biome: pick(['lava', 'desert', 'ice', 'earth'], this.biome), name: nm(OTHER_NAMES), detail: detailSec },
-      { R: 190, orbit: 5400, ang: a0 + 3.9 + rng() * 0.8, y: 240, biome: pick(['lava', 'moon', 'ice', 'desert'], this.biome), name: nm(OTHER_NAMES), detail: detailSec },
+      { R: 150, parent: 0, orbit: 1250, ang: rng() * TAU, y: 140 + rng() * 120, biome: next(), name: nm(MOON_NAMES), detail: detailSec },
+      { R: 230, orbit: 4100, ang: a0 + 1.9 + rng() * 0.8, y: -160, biome: next(), name: nm(OTHER_NAMES), detail: detailSec },
+      { R: 190, orbit: 5400, ang: a0 + 3.9 + rng() * 0.8, y: 240, biome: next(), name: nm(OTHER_NAMES), detail: detailSec },
+      { R: 210, orbit: 6800, ang: a0 + 5.4 + rng() * 0.7, y: -280, biome: next(), name: nm(OTHER_NAMES), detail: detailSec },
     ].slice(0, this.planetCount);
   }
   addPlanet(L, i) {

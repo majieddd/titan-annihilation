@@ -75,6 +75,14 @@ function partGeometry(part, idx) {
   edgeAttr(shape, g, flags || '');
   _e.set(rx || 0, ry || 0, rz || 0); _q.setFromEuler(_e); _p.set(x, y, z); _m.compose(_p, _q, _s); g.applyMatrix4(_m);
   const n = g.getAttribute('position').count; const col = new Float32Array(n * 3), team = new Float32Array(n), glow = new Float32Array(n);
+  // Animation role, baked per part so one instanced draw call can still move its pieces:
+  //   1 wheel/roller (rolls about its own X), 2 leg (swings about its top), 3 rotor (spins about Y),
+  //   4 barrel (recoils along -Z). aPivot is the point that part turns about.
+  const roleCh = (flags || '').includes('W') ? 1 : ((flags || '').includes('S') ? 2 : ((flags || '').includes('R') ? 3 : ((flags || '').includes('B') ? 4 : 0)));
+  const pvY = roleCh === 2 ? y + sy * 0.5 : y;
+  { const role = new Float32Array(n), piv = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { role[i] = roleCh; piv[i * 3] = x; piv[i * 3 + 1] = pvY; piv[i * 3 + 2] = z; }
+    g.setAttribute('aRole', new THREE.BufferAttribute(role, 1)); g.setAttribute('aPivot', new THREE.BufferAttribute(piv, 3)); }
   const f = flags || ''; let c = COLORS.base; if (f.includes('d')) c = COLORS.d; else if (f.includes('l')) c = COLORS.l; else if (f.includes('k')) c = COLORS.k;
   const v = 0.9 + 0.2 * (((idx * 7) % 5) / 4); const isTeam = f.includes('t') ? 1 : 0; const gl = f.includes('G') ? 2.2 : (f.includes('g') ? 1.0 : 0);
   for (let i = 0; i < n; i++) { col[i * 3] = c[0] * v; col[i * 3 + 1] = c[1] * v; col[i * 3 + 2] = c[2] * v; team[i] = isTeam || gl > 0 ? 1 : 0; glow[i] = gl; }
@@ -92,6 +100,18 @@ export function buildModel(def) {
   const range = Math.max(0.01, maxY - minY);
   const setH = (g, off) => { const p = g.getAttribute('position'); const h = new Float32Array(p.count); for (let i = 0; i < p.count; i++) h[i] = (p.getY(i) + off - minY) / range; g.setAttribute('aHeight', new THREE.BufferAttribute(h, 1)); };
   setH(bodyGeo, 0); if (turretGeo) setH(turretGeo, pivot[1]);
+  const packVerts = (geo) => {
+    const n = geo.getAttribute('position').count;
+    const t = geo.getAttribute('aTeam'), gl = geo.getAttribute('aGlow'), h = geo.getAttribute('aHeight'), ao = geo.getAttribute('aAO'), role = geo.getAttribute('aRole'), piv = geo.getAttribute('aPivot');
+    const va = new Float32Array(n * 4), pr = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) {
+      va[i * 4] = t.getX(i); va[i * 4 + 1] = gl.getX(i); va[i * 4 + 2] = h.getX(i); va[i * 4 + 3] = ao.getX(i);
+      pr[i * 4] = piv.getX(i); pr[i * 4 + 1] = piv.getY(i); pr[i * 4 + 2] = piv.getZ(i); pr[i * 4 + 3] = role.getX(i);
+    }
+    geo.setAttribute('aVA', new THREE.BufferAttribute(va, 4)); geo.setAttribute('aPR', new THREE.BufferAttribute(pr, 4));
+    for (const k of ['aTeam', 'aGlow', 'aHeight', 'aAO', 'aRole', 'aPivot']) geo.deleteAttribute(k);
+  };
+  packVerts(bodyGeo); if (turretGeo) packVerts(turretGeo);
   bodyGeo.computeBoundingSphere(); if (turretGeo) turretGeo.computeBoundingSphere();
   return { body: bodyGeo, turret: turretGeo, height: maxY, pivot };
 }
@@ -103,9 +123,22 @@ export function makeUnitMaterial(atmoU) {
     shader.fragmentShader = '#define ST_HAS_TEAM\n' + shader.fragmentShader;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
-        attribute float aTeam; attribute float aGlow; attribute float aHeight; attribute vec3 aTeamColor; attribute vec3 aInst; attribute float aAO; attribute float aEdge;
+        attribute vec4 aVA; attribute vec4 aPR; attribute vec3 aTeamColor; attribute vec3 aInst; attribute float aEdge; attribute vec3 aMot; uniform float uStTime;
+        #define aTeam aVA.x
+        #define aGlow aVA.y
+        #define aHeight aVA.z
+        #define aAO aVA.w
+        #define aRole aPR.w
+        #define aPivot aPR.xyz
         varying float vTeam; varying float vGlow; varying float vHeight; varying vec3 vTeamColor; varying vec3 vInst; varying vec3 vObj; varying vec3 vObjN; varying vec3 vR0; varying vec3 vR1; varying vec3 vR2; varying float vAO; varying float vEdge;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
+        if (aRole > 0.5) {
+          vec3 rel = transformed - aPivot; float ang = 0.0;
+          if (aRole < 1.5) { ang = aMot.x; transformed = aPivot + vec3(rel.x, rel.y * cos(ang) - rel.z * sin(ang), rel.y * sin(ang) + rel.z * cos(ang)); }
+          else if (aRole < 2.5) { ang = sin(aMot.x + aPivot.x * 4.0 + aPivot.z * 2.0) * 0.55 * aMot.z; transformed = aPivot + vec3(rel.x, rel.y * cos(ang) - rel.z * sin(ang), rel.y * sin(ang) + rel.z * cos(ang)); }
+          else if (aRole < 3.5) { ang = uStTime * 26.0; transformed = aPivot + vec3(rel.x * cos(ang) + rel.z * sin(ang), rel.y, -rel.x * sin(ang) + rel.z * cos(ang)); }
+          else { transformed.z -= aMot.y * 0.42; }
+        }
         vTeam = aTeam; vGlow = aGlow; vHeight = aHeight; vTeamColor = aTeamColor; vInst = aInst; vObj = position; vObjN = normal; vAO = aAO; vEdge = aEdge;
         #ifdef USE_INSTANCING
         vR0 = instanceMatrix[0].xyz; vR1 = instanceMatrix[1].xyz; vR2 = instanceMatrix[2].xyz;
@@ -151,14 +184,15 @@ export function makeUnitMaterial(atmoU) {
         float edge = (vInst.x < 1.0) ? (1.0 - smoothstep(0.0, 0.06, vInst.x - vHeight)) : 0.0;
         totalEmissiveRadiance += vTeamColor * edge * 1.8 + vec3(1.0) * vInst.y * 1.2;`);
   };
-  mat.customProgramCacheKey = () => 'unitmat_v6';
-  if (atmoU) injectFog(mat, atmoU, 'unitmat_v6');
+  mat.customProgramCacheKey = () => 'unitmat_v7';
+  if (atmoU) injectFog(mat, atmoU, 'unitmat_v7');
   return mat;
 }
 function makeInstanced(geo, cap, material) {
   const g = geo.clone();
   g.setAttribute('aTeamColor', new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3));
   g.setAttribute('aInst', new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3));
+  g.setAttribute('aMot', new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3)); // phase, recoil, moving
   const mesh = new THREE.InstancedMesh(g, material, cap);
   mesh.count = 0; mesh.frustumCulled = false; mesh.castShadow = true; mesh.receiveShadow = true; mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   return mesh;
@@ -171,15 +205,15 @@ export class UnitRenderer {
       const cap = def.kind === 'titan' ? 24 : (def.kind === 'structure' ? 300 : (def.kind === 'commander' ? 4 : (def.kind === 'orbital' ? 120 : 600)));
       const body = makeInstanced(model.body, cap, this.material); const turret = model.turret ? makeInstanced(model.turret, cap, this.material) : null;
       scene.add(body); if (turret) scene.add(turret);
-      this.types[id] = { def, model, cap, n: 0, body, turret, bTeam: body.geometry.getAttribute('aTeamColor'), bInst: body.geometry.getAttribute('aInst'), tTeam: turret && turret.geometry.getAttribute('aTeamColor'), tInst: turret && turret.geometry.getAttribute('aInst') };
+      this.types[id] = { def, model, cap, n: 0, body, turret, bTeam: body.geometry.getAttribute('aTeamColor'), bInst: body.geometry.getAttribute('aInst'), bMot: body.geometry.getAttribute('aMot'), tMot: turret && turret.geometry.getAttribute('aMot'), tTeam: turret && turret.geometry.getAttribute('aTeamColor'), tInst: turret && turret.geometry.getAttribute('aInst') };
     }
   }
   setVisible(v) { for (const id in this.types) { const t = this.types[id]; t.body.visible = v; if (t.turret) t.turret.visible = v; } }
   begin() { for (const id in this.types) this.types[id].n = 0; }
-  add(defId, matrix, teamColor, progress, flash, turretMatrix, team = 0) {
+  add(defId, matrix, teamColor, progress, flash, turretMatrix, team = 0, phase = 0, recoil = 0, moving = 0) {
     const t = this.types[defId]; if (!t || t.n >= t.cap) return; const i = t.n++;
-    t.body.setMatrixAt(i, matrix); t.bTeam.setXYZ(i, teamColor[0], teamColor[1], teamColor[2]); t.bInst.setXYZ(i, progress, flash, team);
-    if (t.turret) { t.turret.setMatrixAt(i, turretMatrix || matrix); t.tTeam.setXYZ(i, teamColor[0], teamColor[1], teamColor[2]); t.tInst.setXYZ(i, progress, flash, team); }
+    t.body.setMatrixAt(i, matrix); t.bTeam.setXYZ(i, teamColor[0], teamColor[1], teamColor[2]); t.bInst.setXYZ(i, progress, flash, team); t.bMot.setXYZ(i, phase, recoil, moving);
+    if (t.turret) { t.turret.setMatrixAt(i, turretMatrix || matrix); t.tTeam.setXYZ(i, teamColor[0], teamColor[1], teamColor[2]); t.tInst.setXYZ(i, progress, flash, team); if (t.tMot) t.tMot.setXYZ(i, phase, recoil, moving); }
   }
   end() {
     for (const id in this.types) {

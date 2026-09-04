@@ -199,7 +199,7 @@ export function makePeriodicWorley(seed) {
     out.f1 = Math.sqrt(f1); out.f2 = Math.sqrt(f2); out.id = id; return out;
   };
 }
-export const VERSION = '3.6.1';
+export const VERSION = '3.7.0';
 export function cubicBezier(p0, p1, p2, p3, t, out) {
   const mt = 1 - t; const a = mt * mt * mt, b = 3 * mt * mt * t, c = 3 * mt * t * t, d = t * t * t;
   return out.set(p0.x * a + p1.x * b + p2.x * c + p3.x * d, p0.y * a + p1.y * b + p2.y * c + p3.y * d, p0.z * a + p1.z * b + p2.z * c + p3.z * d);

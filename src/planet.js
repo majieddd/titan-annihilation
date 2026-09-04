@@ -13,11 +13,11 @@ export function setPropCards(v) { PROP_CARDS = !!v; }
 import { GrassField } from './foliage.js';
 
 export const BIOMES = {
-  earth:  { name: 'Terran',  sea: true,  lava: false, seaColor: [0.06, 0.34, 0.58], deepColor: [0.01, 0.07, 0.18], atmo: [0.35, 0.62, 1.0], atmoStrength: 1.0,  clouds: 'white', landBias: 0.12, palette: 'earth',  hemiSky: [0.55, 0.7, 1.0], hemiGround: [0.25, 0.2, 0.15], tex: ['grass', 'rock', 'snow'], high: [14, 21], rough: [0.9, 0.96, 0.55], props: 'earth', scatter: [0.0079, 0.0184, 0.045], mie: 0.004, sunI: 22 },
-  lava:   { name: 'Magma',   sea: true,  lava: true,  seaColor: [1.0, 0.42, 0.06], deepColor: [0.55, 0.08, 0.0], atmo: [1.0, 0.42, 0.12], atmoStrength: 0.75, clouds: 'ash',   landBias: 0.2,  palette: 'lava',   hemiSky: [0.9, 0.5, 0.35], hemiGround: [0.3, 0.1, 0.05], tex: ['dust', 'crust', 'rock'], high: [10, 18], rough: [0.95, 0.9, 0.92], props: 'lava', scatter: [0.05, 0.018, 0.006], mie: 0.01, sunI: 18, aerial: 0.12 },
-  ice:    { name: 'Glacial', sea: true,  lava: false, seaColor: [0.5, 0.72, 0.9],   deepColor: [0.15, 0.35, 0.6], atmo: [0.6, 0.82, 1.0], atmoStrength: 0.9,  clouds: 'white', landBias: 0.25, palette: 'ice',    hemiSky: [0.7, 0.8, 1.0], hemiGround: [0.4, 0.45, 0.55], tex: ['ice', 'rock', 'snow'], high: [1.5, 4], rough: [0.3, 0.9, 0.6], props: 'ice', scatter: [0.007, 0.017, 0.045], mie: 0.003, sunI: 22, alb: 0.58 },
-  desert: { name: 'Arid',    sea: false, lava: false, seaColor: [0.2, 0.4, 0.5],   deepColor: [0.1, 0.2, 0.3],   atmo: [1.0, 0.72, 0.42], atmoStrength: 0.7,  clouds: null,    landBias: 0.95, palette: 'desert', hemiSky: [1.0, 0.85, 0.6], hemiGround: [0.45, 0.3, 0.15], tex: ['sand', 'rock', 'dust'], high: [9, 15], rough: [0.9, 0.96, 0.9], props: 'desert', scatter: [0.024, 0.02, 0.028], mie: 0.008, sunI: 20, alb: 0.95 },
-  moon:   { name: 'Barren',  sea: false, lava: false, seaColor: [0, 0, 0],         deepColor: [0, 0, 0],         atmo: [0.5, 0.55, 0.65], atmoStrength: 0.22, clouds: null,    landBias: 0.95, palette: 'moon',   hemiSky: [0.5, 0.55, 0.65], hemiGround: [0.2, 0.2, 0.22], tex: ['dust', 'rock', 'dust'], high: [8, 14], rough: [0.95, 0.96, 0.95], props: 'moon', scatter: [0.0079, 0.0184, 0.045], mie: 0.002, sunI: 20 },
+  earth:  { name: 'Terran',  sea: true,  lava: false, seaColor: [0.06, 0.34, 0.58], deepColor: [0.01, 0.07, 0.18], atmo: [0.35, 0.62, 1.0], atmoStrength: 1.0,  clouds: 'white', landBias: 0.12, palette: 'earth',  hemiSky: [0.55, 0.7, 1.0], hemiGround: [0.25, 0.2, 0.15], tex: ['grass', 'rock', 'snow'], high: [14, 21], rough: [0.9, 0.96, 0.55], props: 'earth', canyon: { depth: 6.5, freq: 1.9, floorW: 0.30, wallW: 0.15 }, scatter: [0.0079, 0.0184, 0.045], mie: 0.004, sunI: 22 },
+  lava:   { name: 'Magma',   sea: true,  lava: true,  seaColor: [1.0, 0.42, 0.06], deepColor: [0.55, 0.08, 0.0], atmo: [1.0, 0.42, 0.12], atmoStrength: 0.75, clouds: 'ash',   landBias: 0.2,  palette: 'lava',   hemiSky: [0.9, 0.5, 0.35], hemiGround: [0.3, 0.1, 0.05], tex: ['dust', 'crust', 'rock'], high: [10, 18], rough: [0.95, 0.9, 0.92], props: 'lava', canyon: { depth: 8.0, freq: 1.7, floorW: 0.32, wallW: 0.16 }, scatter: [0.05, 0.018, 0.006], mie: 0.01, sunI: 18, aerial: 0.12 },
+  ice:    { name: 'Glacial', sea: true,  lava: false, seaColor: [0.5, 0.72, 0.9],   deepColor: [0.15, 0.35, 0.6], atmo: [0.6, 0.82, 1.0], atmoStrength: 0.9,  clouds: 'white', landBias: 0.25, palette: 'ice',    hemiSky: [0.7, 0.8, 1.0], hemiGround: [0.4, 0.45, 0.55], tex: ['ice', 'rock', 'snow'], high: [1.5, 4], rough: [0.3, 0.9, 0.6], props: 'ice', canyon: { depth: 5.0, freq: 2.2, floorW: 0.26, wallW: 0.14 }, scatter: [0.007, 0.017, 0.045], mie: 0.003, sunI: 22, alb: 0.58 },
+  desert: { name: 'Arid',    sea: false, lava: false, seaColor: [0.2, 0.4, 0.5],   deepColor: [0.1, 0.2, 0.3],   atmo: [1.0, 0.72, 0.42], atmoStrength: 0.7,  clouds: null,    landBias: 0.95, palette: 'desert', hemiSky: [1.0, 0.85, 0.6], hemiGround: [0.45, 0.3, 0.15], tex: ['sand', 'rock', 'dust'], high: [9, 15], rough: [0.9, 0.96, 0.9], props: 'desert', canyon: { depth: 9.0, freq: 1.8, floorW: 0.34, wallW: 0.17 }, scatter: [0.024, 0.02, 0.028], mie: 0.008, sunI: 20, alb: 0.95 },
+  moon:   { name: 'Barren',  sea: false, lava: false, seaColor: [0, 0, 0],         deepColor: [0, 0, 0],         atmo: [0.5, 0.55, 0.65], atmoStrength: 0.22, clouds: null,    landBias: 0.95, palette: 'moon',   hemiSky: [0.5, 0.55, 0.65], hemiGround: [0.2, 0.2, 0.22], tex: ['dust', 'rock', 'dust'], high: [8, 14], rough: [0.95, 0.96, 0.95], props: 'moon', canyon: { depth: 7.0, freq: 1.6, floorW: 0.28, wallW: 0.15 }, scatter: [0.0079, 0.0184, 0.045], mie: 0.002, sunI: 20 },
 };
 
 const RAMPS = {
@@ -179,6 +179,10 @@ export function injectFog(mat, uniforms, key) {
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + ATMO_GLSL + '\n' + STYLE_GLSL + '\nvarying vec3 vAtW;')
       .replace('#include <alphamap_fragment>', 'diffuseColor.rgb = stSat(stPoster(diffuseColor.rgb, uStPoster), uStSat);\n#include <alphamap_fragment>')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, max(roughnessFactor, 0.72), smoothstep(70.0, 300.0, length(vViewPosition)));')
+      // Specular antialiasing. three widens roughness by the curvature of the GEOMETRIC normal only,
+      // so a strong normal map still produces sub-pixel highlights that crawl as the camera moves
+      // (the shimmer on the bright, high-normal styles). Widen it by the SHADED normal's variance too.
+      .replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n{ vec3 stNdx = dFdx(normal), stNdy = dFdy(normal); float stNv = max(dot(stNdx, stNdx), dot(stNdy, stNdy)); material.roughness = min(1.0, sqrt(material.roughness * material.roughness + stNv * 1.6)); }')
       .replace('#include <emissivemap_fragment>', 'normal = normalize(mix(nonPerturbedNormal, normal, uStNormal * (1.0 - 0.9 * smoothstep(70.0, 300.0, length(vViewPosition)))));\n#ifndef USE_ALPHATEST\nif (uStFlat > 0.5) { vec3 stFn = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition))); if (dot(stFn, nonPerturbedNormal) < 0.0) stFn = -stFn; normal = stFn; }\n#endif\n#include <emissivemap_fragment>')
       .replace('#include <opaque_fragment>', STYLE_LIGHT_GLSL + '\n#include <opaque_fragment>')
       .replace('#include <tonemapping_fragment>', '{ vec3 atT, atS; atAerial(cameraPosition, vAtW, atT, atS); gl_FragColor.rgb = gl_FragColor.rgb * atT + atS; }\n#include <tonemapping_fragment>');
@@ -392,10 +396,26 @@ export class Planet {
     const X = x + wx, Y = y + wy, Z = z + wz;
     let c = nz.fbm(X * 1.4 + o[0], Y * 1.4 + o[1], Z * 1.4 + o[2], 5, 2.1, 0.5); c = c * 1.7 + b.landBias; let e = c * 9.0;
     const mmask = smoothstep(0.05, 0.55, c);
-    if (mmask > 0) { const r = nz.ridged(X * 3.1 + o[1], Y * 3.1, Z * 3.1 + o[0], 4, 2.2, 0.5); e += r * r * r * 24 * mmask; }
+    // Canyon mask FIRST: the floor has to suppress the mountain relief it cuts through, otherwise a
+    // channel crossing a range keeps the range's own roughness and stops being a walkable route.
+    let cm = 0;
+    { const cq = b.canyon;
+      if (cq && cq.depth > 0) {
+        const cw = nz.fbm(X * cq.freq + o[1] * 1.7, Y * cq.freq + 5.2, Z * cq.freq + o[2] * 1.3, 3, 2.0, 0.5);
+        let m = 1 - smoothstep(cq.floorW, cq.floorW + cq.wallW, Math.abs(cw));
+        const cw2 = nz.fbm(X * cq.freq * 2.35 + 12.9, Y * cq.freq * 2.35 + o[0], Z * cq.freq * 2.35 + 3.1, 2, 2.0, 0.5);
+        m = Math.max(m, (1 - smoothstep(cq.floorW * 0.55, cq.floorW * 0.55 + cq.wallW * 1.2, Math.abs(cw2))) * 0.6);
+        cm = m * smoothstep(1.5, 8.0, e); // only bite into land, and fade out near the coast so
+        // canyons become inlets instead of drowning the shoreline
+      } }
+    if (mmask > 0) { const r = nz.ridged(X * 3.1 + o[1], Y * 3.1, Z * 3.1 + o[0], 4, 2.2, 0.5); e += r * r * r * 24 * mmask * (1 - 0.92 * cm); }
     e += nz.noise3(x * 14, y * 14, z * 14) * 0.5;
     const d1 = nz.noise3(x * 40 + o[2], y * 40, z * 40), d2 = nz.noise3(x * 95, y * 95 + o[0], z * 95);
-    e += (d1 * 0.5 + d2 * 0.2) * (0.3 + 0.7 * mmask);
+    e += (d1 * 0.5 + d2 * 0.2) * (0.3 + 0.7 * mmask) * (1 - 0.7 * cm);
+    // CANYON NETWORK. A narrow band around the zero level-set of a warped noise field is a connected
+    // winding curve over the sphere, so carving it yields ROUTES rather than pits: wide flat floors
+    // for movement, a sharp transition for the cliff wall, and tributaries branching off the trunk.
+    if (cm > 0) e -= (b.canyon.depth || 0) * cm;
     for (let i = 0; i < this.craters.length; i++) { const cr = this.craters[i]; const d = x * cr.dir.x + y * cr.dir.y + z * cr.dir.z; if (d > cr.cosOuter) { const a = Math.acos(Math.min(1, d)) * R / cr.r; e += craterProfile(a) * cr.depth; } }
     return e;
   }

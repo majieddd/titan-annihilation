@@ -204,6 +204,14 @@ export const STYLE_LIGHT_GLSL = `
 const V = (r, g, b) => [r, g, b];
 export const STYLES = [
   {
+    id: 'polished', name: 'Polished Diorama Ink', hint: 'The house style: the diorama\'s clay, saturation and rim light with realism\'s soft glow, atmospheric mist and full-detail materials, drawn with hard black outlines and a gentle tilt-shift.',
+    mat: { lod: 0.35, normal: 0.75, poster: 0, sat: 1.3, bands: 0, soft: 0.06, ambient: 1, spec: 0.72, hatch: 0, halftone: 0, outline: 0, clay: 0.85, faction: 0, tooth: 0, jitter: 0, rim: 0, rimColor: V(1, 1, 1), tile: 0, flat: 0, fxGain: 1.0, shadowTint: V(0.9, 0.93, 1.02), litTint: V(1.03, 1.0, 0.96) },
+    light: { sun: 3.6, sunColor: 0xfff0da, hemi: 0.5, env: 0.95, fill: 0.55, fillColor: 0xa8c8ff },
+    atmo: { aerial: 0.85, sunI: 0.95 },
+    post: { tone: 'aces', exposure: 1.12, gtao: true, bloom: [0.28, 0.55, 0.86], edge: { thick: 2.2, depthT: 0.042, normalT: 0.32, color: V(0.02, 0.02, 0.03), strength: 1.0, boil: 0, fade: 900 }, halftone: null, tilt: { amount: 3.2, focus: 0.5, width: 0.3 },
+      grade: { sat: 1.16, con: 1.06, vig: 0.3, sharp: 0.18, ca: 0.004, grain: 0.02, poster: 0, paper: 0, shadowTint: V(0.98, 0.99, 1.03), highTint: V(1.03, 1.0, 0.97) } },
+  },
+  {
     id: 'realism', name: 'Polished Realism', hint: 'The photographic baseline: scanned materials, scattering sky, image-based light, gentle film grade.',
     mat: { lod: 0, normal: 1, poster: 0, sat: 1.02, bands: 0, soft: 0.06, ambient: 1, spec: 1, hatch: 0, halftone: 0, outline: 0, clay: 0, faction: 0, shadowTint: V(0.94, 0.97, 1.05), litTint: V(1.03, 1.0, 0.96) },
     light: { sun: 3.1, sunColor: 0xfff1dc, hemi: 0.15, env: 1.0, fill: 0.0, fillColor: 0x9fbcff },

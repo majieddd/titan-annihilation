@@ -45,7 +45,7 @@ function tankModel(s, opts = {}) {
     P('box', -w * 0.3, h * 1.25, l * 0.5, 0.18 * s, 0.1 * s, 0.05 * s, 'G'), P('box', w * 0.3, h * 1.25, l * 0.5, 0.18 * s, 0.1 * s, 0.05 * s, 'G'),
     P('box', -w * 0.4, h * 2.3, -l * 0.35, 0.04 * s, 1.3 * s, 0.04 * s, 'l'),
   ];
-  for (const side of [-1, 1]) for (let i = 0; i < 4; i++) { const z = (-0.36 + i * 0.24) * l; parts.push(P('cylx', side * w * 0.6, h * 0.5, z, w * 0.34, h * 0.8, h * 0.8, 'k'), P('cylx', side * w * 0.63, h * 0.5, z, w * 0.34, h * 0.4, h * 0.4, 'l')); }
+  for (const side of [-1, 1]) for (let i = 0; i < 4; i++) { const z = (-0.36 + i * 0.24) * l; parts.push(P('cylx', side * w * 0.6, h * 0.5, z, w * 0.34, h * 0.8, h * 0.8, 'kW'), P('cylx', side * w * 0.63, h * 0.5, z, w * 0.34, h * 0.4, h * 0.4, 'l')); }
   const ty = h * 1.7;
   const tr = opts.turretR || 0.55 * s;
   parts.push(P('cyl', 0, 0.3 * s, 0, tr * 2, 0.6 * s, tr * 2, 'u'));
@@ -57,9 +57,9 @@ function tankModel(s, opts = {}) {
   const barrels = opts.barrels === undefined ? 1 : opts.barrels; const bl = opts.barrelLen || 1.5 * s; const br = opts.barrelR || 0.11 * s;
   for (let i = 0; i < barrels; i++) {
     const off = barrels === 1 ? 0 : (i - (barrels - 1) / 2) * br * 3.2;
-    parts.push(P('cylz', off, 0.4 * s, tr + bl / 2, br * 2, br * 2, bl, 'ud'));
+    parts.push(P('cylz', off, 0.4 * s, tr + bl / 2, br * 2, br * 2, bl, 'udB'));
     parts.push(P('cylz', off, 0.4 * s, tr + bl * 0.25, br * 2.6, br * 2.6, bl * 0.2, 'uk'));
-    parts.push(P('cylz', off, 0.4 * s, tr + bl - br * 1.4, br * 2.5, br * 2.5, br * 2.4, 'uk'));
+    parts.push(P('cylz', off, 0.4 * s, tr + bl - br * 1.4, br * 2.5, br * 2.5, br * 2.4, 'ukB'));
   }
   if (opts.radar) parts.push(P('box', tr * 0.8, 0.85 * s, -0.2 * s, 0.15 * s, 0.5 * s, 0.15 * s, 'ul'), P('box', tr * 0.8, 1.1 * s, -0.2 * s, 0.5 * s, 0.04 * s, 0.25 * s, 'ul'));
   return { parts, turretPivot: [0, ty, -0.15 * s], height: ty + 0.8 * s };
@@ -67,12 +67,12 @@ function tankModel(s, opts = {}) {
 function botModel(s, opts = {}) {
   const parts = [
     P('sph', -0.34 * s, 1.0 * s, 0, 0.32 * s, 0.32 * s, 0.32 * s, 'd'), P('sph', 0.34 * s, 1.0 * s, 0, 0.32 * s, 0.32 * s, 0.32 * s, 'd'),
-    P('rbox', -0.32 * s, 0.75 * s, 0, 0.22 * s, 0.5 * s, 0.32 * s, ''), P('rbox', 0.32 * s, 0.75 * s, 0, 0.22 * s, 0.5 * s, 0.32 * s, ''),
+    P('rbox', -0.32 * s, 0.75 * s, 0, 0.22 * s, 0.5 * s, 0.32 * s, 'S'), P('rbox', 0.32 * s, 0.75 * s, 0, 0.22 * s, 0.5 * s, 0.32 * s, 'S'),
     P('sph', -0.32 * s, 0.55 * s, 0, 0.3 * s, 0.3 * s, 0.3 * s, 'l'), P('sph', 0.32 * s, 0.55 * s, 0, 0.3 * s, 0.3 * s, 0.3 * s, 'l'),
-    P('rbox', -0.32 * s, 0.3 * s, 0.02 * s, 0.2 * s, 0.5 * s, 0.3 * s, 'd'), P('rbox', 0.32 * s, 0.3 * s, 0.02 * s, 0.2 * s, 0.5 * s, 0.3 * s, 'd'),
+    P('rbox', -0.32 * s, 0.3 * s, 0.02 * s, 0.2 * s, 0.5 * s, 0.3 * s, 'dS'), P('rbox', 0.32 * s, 0.3 * s, 0.02 * s, 0.2 * s, 0.5 * s, 0.3 * s, 'dS'),
     P('box', -0.32 * s, 0.32 * s, 0.19 * s, 0.16 * s, 0.4 * s, 0.05 * s, 'l'), P('box', 0.32 * s, 0.32 * s, 0.19 * s, 0.16 * s, 0.4 * s, 0.05 * s, 'l'),
     P('cyl', -0.32 * s, 0.32 * s, -0.19 * s, 0.07 * s, 0.42 * s, 0.07 * s, 'k'), P('cyl', 0.32 * s, 0.32 * s, -0.19 * s, 0.07 * s, 0.42 * s, 0.07 * s, 'k'),
-    P('box', -0.32 * s, 0.08 * s, 0.08 * s, 0.28 * s, 0.16 * s, 0.55 * s, 'k'), P('box', 0.32 * s, 0.08 * s, 0.08 * s, 0.28 * s, 0.16 * s, 0.55 * s, 'k'),
+    P('box', -0.32 * s, 0.08 * s, 0.08 * s, 0.28 * s, 0.16 * s, 0.55 * s, 'kS'), P('box', 0.32 * s, 0.08 * s, 0.08 * s, 0.28 * s, 0.16 * s, 0.55 * s, 'kS'),
     P('rbox', 0, 1.2 * s, 0, 0.9 * s, 0.7 * s, 0.7 * s, ''),
     P('rbox', 0, 1.25 * s, 0.36 * s, 0.6 * s, 0.4 * s, 0.1 * s, 't'),
     P('box', -0.18 * s, 1.0 * s, 0.37 * s, 0.14 * s, 0.03 * s, 0.03 * s, 'k'), P('box', 0, 1.0 * s, 0.37 * s, 0.14 * s, 0.03 * s, 0.03 * s, 'k'), P('box', 0.18 * s, 1.0 * s, 0.37 * s, 0.14 * s, 0.03 * s, 0.03 * s, 'k'),
@@ -107,7 +107,7 @@ function planeModel(s, opts = {}) {
   ];
   const span = (opts.span || 2.6) * s;
   if (opts.wing === 'delta') { parts.push(P('wdg', 0, 0.45 * s, -0.2 * s, span, 0.08 * s, 1.3 * s, 't', 0, 0, 0), P('box', -span * 0.42, 0.5 * s, -0.5 * s, 0.05 * s, 0.25 * s, 0.4 * s, 'l'), P('box', span * 0.42, 0.5 * s, -0.5 * s, 0.05 * s, 0.25 * s, 0.4 * s, 'l'), P('box', 0, 0.42 * s, -0.75 * s, span * 0.7, 0.03 * s, 0.14 * s, 'd')); }
-  else if (opts.wing === 'heli') { parts.push(P('box', 0, 0.95 * s, 0, 3.4 * s, 0.05 * s, 0.25 * s, 'd'), P('box', 0, 0.95 * s, 0, 0.25 * s, 0.05 * s, 3.4 * s, 'd'), P('cyl', 0, 0.85 * s, 0, 0.2 * s, 0.2 * s, 0.2 * s, 'l'), P('cyl', 0, 0.78 * s, 0, 0.5 * s, 0.1 * s, 0.5 * s, 'k'), P('box', 0, 0.2 * s, 0, 0.5 * s, 0.1 * s, 0.8 * s, 'k')); }
+  else if (opts.wing === 'heli') { parts.push(P('box', 0, 0.95 * s, 0, 3.4 * s, 0.05 * s, 0.25 * s, 'dR'), P('box', 0, 0.95 * s, 0, 0.25 * s, 0.05 * s, 3.4 * s, 'dR'), P('cyl', 0, 0.85 * s, 0, 0.2 * s, 0.2 * s, 0.2 * s, 'l'), P('cyl', 0, 0.78 * s, 0, 0.5 * s, 0.1 * s, 0.5 * s, 'k'), P('box', 0, 0.2 * s, 0, 0.5 * s, 0.1 * s, 0.8 * s, 'k')); }
   else { parts.push(P('rbox', 0, 0.45 * s, -0.1 * s, span, 0.07 * s, 0.7 * s, 't'), P('box', 0, 0.44 * s, -0.42 * s, span * 0.85, 0.04 * s, 0.14 * s, 'd'), P('box', -span * 0.5, 0.45 * s, -0.3 * s, 0.1 * s, 0.35 * s, 0.6 * s, 'd'), P('box', span * 0.5, 0.45 * s, -0.3 * s, 0.1 * s, 0.35 * s, 0.6 * s, 'd')); }
   parts.push(P('box', -span * 0.5, 0.5 * s, -0.1 * s, 0.08 * s, 0.05 * s, 0.08 * s, 'G'), P('box', span * 0.5, 0.5 * s, -0.1 * s, 0.08 * s, 0.05 * s, 0.08 * s, 'G'));
   if (opts.pods) { parts.push(P('cylz', -span * 0.3, 0.3 * s, 0, 0.22 * s, 0.22 * s, 1.0 * s, 'd'), P('cylz', span * 0.3, 0.3 * s, 0, 0.22 * s, 0.22 * s, 1.0 * s, 'd'), P('conez', -span * 0.3, 0.3 * s, 0.6 * s, 0.22 * s, 0.22 * s, 0.25 * s, 'l'), P('conez', span * 0.3, 0.3 * s, 0.6 * s, 0.22 * s, 0.22 * s, 0.25 * s, 'l'), P('box', -span * 0.3, 0.4 * s, 0, 0.06 * s, 0.1 * s, 0.4 * s, 'k'), P('box', span * 0.3, 0.4 * s, 0, 0.06 * s, 0.1 * s, 0.4 * s, 'k')); }

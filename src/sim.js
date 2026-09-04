@@ -50,7 +50,7 @@ export class Game {
       id: nextId++, def, team, planet, pos: new THREE.Vector3(), dir: dir.clone().normalize(), fwd: new THREE.Vector3(), quat: new THREE.Quaternion(),
       hp: 0, progress: opts.progress ?? 1, built: false, orders: [], path: null, pathIdx: 0, pathGoal: null, pathPending: false,
       target: null, attackTarget: null, engage: 'idle', moveGoal: null, holdFacing: null, cd: def.weapons ? def.weapons.map(() => 0) : null, scanT: Math.random() * 0.3,
-      turret: 0, turretGoal: 0, speed: 0, alt: 0, flash: 0, stuck: 0, stuckT: 0, lastGoalDist: 1e9, giveUp: 0, dead: false, drop: opts.drop || 0,
+      turret: 0, turretGoal: 0, speed: 0, alt: 0, flash: 0, phase: 0, recoil: 0, stuck: 0, stuckT: 0, lastGoalDist: 1e9, giveUp: 0, dead: false, drop: opts.drop || 0,
       moving: false, yawRate: 0, roll: 0, building: null, ai: null, spot: null, loiter: null, overshoot: null, bobPhase: Math.random() * 6.28, assist: 0,
       factory: def.factory ? { queue: [], current: null, loop: false, rally: null } : null, parentFactory: null, lastHitT: -99, killedBy: null, lastBuildT: this.time,
       transit: null, link: null, silo: def.silo ? { progress: 0, ammo: 0, active: true } : null,
@@ -215,6 +215,9 @@ export class Game {
     this.checkEnd();
   }
   updateUnit(u, dt) {
+    // wheels roll and legs swing off distance travelled, so motion matches the ground speed
+    if (u.def.mobile) u.phase += u.speed * dt * (u.def.kind === 'bot' ? 1.15 : 1.7);
+    if (u.recoil > 0) u.recoil = Math.max(0, u.recoil - dt * 4.5);
     const def = u.def;
     if (u.flash > 0) u.flash *= Math.exp(-dt * 7);
     if (u.drop > 0) {
@@ -448,6 +451,7 @@ export class Game {
     return out;
   }
   fire(u, w, wi, t) {
+    u.recoil = 1;
     const col = w.color || this.teams[u.team].color; const origin = this.weaponOrigin(u, w, new THREE.Vector3()); const pl = u.planet;
     switch (w.type) {
       case 'laser': case 'uber': {
