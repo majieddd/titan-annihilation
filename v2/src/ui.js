@@ -27,7 +27,7 @@ export class UI {
       if (this.app.state !== 'playing') { this.boxStart = null; this.boxing = false; $('selbox').classList.add('hidden'); return; }
       if (e.button === 0) {
         const onCanvas = e.target === canvas;
-        if (this.placing) { if (onCanvas) this.place(e.shiftKey); }
+        if (this.placing) { if (onCanvas) { this.mouse.x = e.clientX; this.mouse.y = e.clientY; this.updateGhost(); this.place(e.shiftKey); } }
         else if (this.mode && onCanvas) { this.commandAt(e.clientX, e.clientY, e.shiftKey, true); }
         else if (this.boxing) { this.boxSelect(this.boxStart.x, this.boxStart.y, e.clientX, e.clientY, e.shiftKey); }
         else if (this.boxStart && onCanvas) { this.clickSelect(e.clientX, e.clientY, e.shiftKey); }
@@ -37,7 +37,7 @@ export class UI {
       }
     });
     window.addEventListener('keydown', (e) => {
-      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
+      if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
       if (e.key === '[' || e.key === ']') { this.app.cycleStyle(e.key === ']' ? 1 : -1); e.preventDefault(); return; }
       if (e.key === 'Shift') this.shiftDown = true;
       if (this.app.state !== 'playing') return;
@@ -78,7 +78,7 @@ export class UI {
   readSettings() {
     const s = this.app.settings;
     s.difficulty = $('optDiff').querySelector('.active').dataset.v; s.biome = $('optBiome').querySelector('.active').dataset.v; s.quality = $('optQuality').querySelector('.active').dataset.v; s.planets = parseInt($('optPlanets').querySelector('.active').dataset.v, 10); s.seed = $('optSeed').value || 'titan'; const sb = $('optStyle').querySelector('.active'); if (sb) s.style = sb.dataset.v;
-    try { localStorage.setItem('ta_settings', JSON.stringify(s)); } catch (e) { }
+    try { localStorage.setItem('ta_v2_settings', JSON.stringify(s)); } catch (e) { }
   }
   applySettings() {
     const s = this.app.settings;
@@ -99,7 +99,7 @@ export class UI {
   pickUnit(x, y) {
     const g = this.game; if (!g) return null; let best = null, bd = Infinity;
     const cam = this.cam; const H = this.app.canvas.clientHeight; const f = (H / 2) / Math.tan(THREE.MathUtils.degToRad(cam.camera.fov) / 2);
-    const iconMode = cam.mode === 'system' || cam.dist > 90;
+    const iconMode = cam.mode === 'system' || cam.dist > 220;
     for (const u of g.units) {
       if (u.dead || (u.progress <= 0 && u.team !== 0)) continue; if (!this.visible(u)) continue;
       if (!cam.worldToScreen(u.pos, _p)) continue;
@@ -138,6 +138,7 @@ export class UI {
     const target = this.pickUnit(x, y);
     if (target && target.team === 0 && target.def.teleporter && own.length === 1 && own[0].def.teleporter && own[0] !== target) { if (g.linkTeleporters(own[0], target)) this.alert(`Teleporter linked: ${own[0].planet.name} ⇄ ${target.planet.name}`, 'good', target.planet, target.dir); this.mode = null; this.selDirty = true; return; }
     if (target && target.team !== 0 && target.progress > 0) { g.orderAttack(own, target, shift); this.feedback(target.planet, target.dir, [1, 0.3, 0.2]); if (!own.some((u) => g.canReach(u, target.planet))) this.alert('No route to that planet: link teleporters or use orbital units', 'warn', null); }
+    else if (target && target.team === 0 && target.built && target.hp < target.def.hp && own.some((u) => u.def.builder && u !== target)) { const n = g.orderRepair(own, target, shift); if(n) { this.feedback(target.planet,target.dir,[0.45,0.9,0.6]); this.hint('Repairing ' + target.def.name + '. Repair consumes metal and energy.'); } }
     else if (target && target.team === 0 && (!target.built || target.factory || target.silo) && own.some((u) => u.def.builder)) { g.orderBuild(own.filter((u) => u.def.builder), target, shift); this.feedback(target.planet, target.dir, [0.4, 1, 0.6]); }
     else if (pick) {
       const n = this.mode === 'attack' ? g.orderAttackMove(own, pick.planet, pick.dir, shift) : g.orderMove(own, pick.planet, pick.dir, shift);
@@ -150,7 +151,7 @@ export class UI {
   toggleLoop() { for (const f of this.ownSel()) { if (f.factory) f.factory.loop = !f.factory.loop; if (f.silo) f.silo.active = !f.silo.active; } this.selDirty = true; }
   // ---------- placement ----------
   startPlacing(defId) { this.stopPlacing(); this.mode = null; this.placing = { defId, valid: false, dir: new THREE.Vector3(), planet: null, reason: '' }; this.ghost = this.app.unitRenderer.createGhost(defId); this.app.scene.add(this.ghost); }
-  stopPlacing() { if (this.ghost) { this.app.scene.remove(this.ghost); this.ghost = null; } this.placing = null; this.selDirty = true; }
+  stopPlacing() { if (this.ghost) { this.app.scene.remove(this.ghost); this.ghost.userData.mat.dispose(); this.ghost = null; } this.placing = null; this.selDirty = true; }
   updateGhost() {
     const p = this.placing; if (!p) return;
     const pick = this.cam.pickPlanet(this.mouse.x, this.mouse.y, _d);
@@ -176,7 +177,7 @@ export class UI {
     this.updateHorizons();
     if (this.sel.some((u) => u.dead)) { this.sel = this.sel.filter((u) => !u.dead); this.selDirty = true; }
     const sys = cam.mode === 'system';
-    const iconAlpha = sys ? 1 : smoothstep(55, 130, cam.dist); fx.icons.uniforms.uAlpha.value = iconAlpha;
+    const iconAlpha = sys ? 1 : smoothstep(170, 360, cam.dist); fx.icons.uniforms.uAlpha.value = iconAlpha;
     const showBars = !sys && cam.dist < 320; const selSet = this.selSet || (this.selSet = new Set()); selSet.clear(); for (const u of this.sel) selSet.add(u);
     const focus = cam.planet;
     for (const u of g.units) {
@@ -208,18 +209,23 @@ export class UI {
     const mr = $('metalRate'); mr.textContent = `+${fmtNum(T.incomeM)} -${fmtNum(T.expenseM || 0)}`; mr.classList.toggle('neg', T.incomeM - (T.expenseM || 0) < 0);
     const er = $('energyRate'); er.textContent = `+${fmtNum(T.incomeE)} -${fmtNum(T.expenseE || 0)}`; er.classList.toggle('neg', T.incomeE - (T.expenseE || 0) < 0);
     $('resMetal').classList.toggle('stall', T.stallM && T.lastDemandM > 0); $('resEnergy').classList.toggle('stall', T.stallE && T.lastDemandM > 0);
-    $('clock').textContent = fmtTime(g.time); $('unitCount').textContent = `UNITS ${T.units.filter((u) => u.built).length}`; $('fps').textContent = `${this.fps} FPS`;
+    $('clock').textContent = fmtTime(g.time); $('unitCount').textContent = `UNITS ${T.units.filter((u) => u.built).length}`; $('fps').textContent = `${this.app.performance.fps} FPS`;
   }
   renderPlanetBar() {
-    const bar = $('planetbar'); const g = this.game; if (!g) return; bar.innerHTML = '';
+    const bar = $('planetbar'); const g = this.game; if (!g) return;
+    const threats = new Map(this.app.system.planets.map(p=>[p.index,g.teams[1].units.some(e=>!e.dead&&e.planet===p&&e.def.weapons&&e.built&&g.teams[0].units.some(u=>!u.dead&&u.planet===p&&u.pos.distanceToSquared(e.pos)<160*160))]));
+    for(const button of bar.querySelectorAll('[data-planet]'))button.classList.toggle('threat',threats.get(Number(button.dataset.planet)));
+    const key = [this.cam.mode,this.cam.planet.index,...this.app.system.planets.map(p=>g.units.filter(u=>!u.dead&&u.built&&u.planet===p).map(u=>u.id+':'+u.team).join(','))].join('|');
+    if(this.planetKey===key)return;this.planetKey=key;bar.innerHTML = '';
     const sys = this.cam.mode === 'system';
     for (const p of this.app.system.planets) {
       const b = document.createElement('button'); b.className = 'pbtn' + (!sys && this.cam.planet === p ? ' active' : '');
+      b.dataset.planet=p.index;
       const mine = g.teams[0].units.filter((u) => u.planet === p && !u.dead && u.built).length; const enemy = g.teams[1].units.filter((u) => u.planet === p && !u.dead && u.built && u.def.weapons).length;
       const sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = colorHex(p.biome.atmo); b.appendChild(sw);
       b.appendChild(document.createTextNode(p.name.toUpperCase()));
-      const c = document.createElement('span'); c.className = 'cnt'; c.textContent = `${mine}${enemy ? ' · ' + enemy + '⚔' : ''}`; b.appendChild(c);
-      if (enemy && mine) b.classList.add('threat');
+      const c = document.createElement('span'); c.className = 'cnt'; c.textContent = `${mine}${enemy ? ' · ' + enemy + ' hostile' : ''}`; b.appendChild(c);
+      if (threats.get(p.index)) b.classList.add('threat');
       b.title = `${p.biome.name} · radius ${p.R} · ${p.spots.length} metal spots`;
       b.addEventListener('click', () => { const c = g.teams[0].commander; const dir = (c && !c.dead && c.planet === p) ? c.dir : null; this.app.focusPlanet(p, dir, Math.min(this.cam.targetDist, p.R * 0.6)); this.barDirty = true; });
       bar.appendChild(b);
@@ -229,16 +235,16 @@ export class UI {
   updateHint() {
     const h = $('hint'); const m = $('modeTag');
     if (this._hintUntil > performance.now() && !this.placing && !this.mode) { m.textContent = ''; return; }
-    if (this.placing) { const d = DEFS[this.placing.defId]; h.textContent = this.placing.valid ? `Place ${d.name} on ${this.placing.planet ? this.placing.planet.name : ''} — click to build, shift for multiple, Esc to cancel` : (this.placing.reason || 'Cannot build here'); m.textContent = 'PLACEMENT'; }
+    if (this.placing) { const d = DEFS[this.placing.defId]; h.textContent = this.placing.valid ? `Place ${d.name} on ${this.placing.planet ? this.placing.planet.name : ''} : click to build, shift for multiple, Esc to cancel` : (this.placing.reason || 'Cannot build here'); m.textContent = 'PLACEMENT'; }
     else if (this.mode === 'attack') { h.textContent = 'Attack-move: click a location or target (any planet)'; m.textContent = 'ATTACK MOVE'; }
     else if (this.mode === 'rally') { h.textContent = 'Click to set the factory rally point'; m.textContent = 'SET RALLY'; }
     else if (this.mode === 'nuke') { h.textContent = 'NUCLEAR STRIKE: click the target on any planet'; m.textContent = 'NUKE TARGETING'; }
-    else if (this.cam.mode === 'system') { h.textContent = 'System view — click a planet or scroll in to focus it'; m.textContent = 'SYSTEM VIEW'; }
+    else if (this.cam.mode === 'system') { h.textContent = 'System view : click a planet or scroll in to focus it'; m.textContent = 'SYSTEM VIEW'; }
     else { h.textContent = ''; m.textContent = ''; }
   }
   renderPanels() {
     const own = this.ownSel(); const sel = this.sel.filter((u) => !u.dead);
-    const title = $('selTitle'), info = $('selInfo'), grid = $('selGrid'); grid.innerHTML = '';
+    const title = $('selTitle'), info = $('selInfo'), grid = $('selGrid');
     if (!sel.length) { title.textContent = 'No selection'; info.textContent = 'Left-drag to select units. Right-click to issue orders. V toggles the system view.'; }
     else if (sel.length === 1) {
       const u = sel[0]; const d = u.def; title.textContent = d.name + (u.team !== 0 ? ' (enemy)' : '') + ' · ' + u.planet.name;
@@ -253,16 +259,24 @@ export class UI {
       if (u.orders.length) s += ` · ${u.orders[0].type}`;
       info.textContent = s;
     } else { title.textContent = `${sel.length} units`; let hp = 0, max = 0; for (const u of sel) { hp += u.hp; max += u.def.hp; } info.textContent = `Total HP ${fmtNum(hp)} / ${fmtNum(max)}`; }
+    const key = sel.map(u => [u.id,u.built,u.factory && [u.factory.current && u.factory.current.id,u.factory.queue.join(','),u.factory.loop].join('/'),u.silo && [u.silo.ammo,u.silo.active].join('/')].join(':')).join('|') + [this.tab,this.mode,this.placing && this.placing.defId,this.cam.mode,this.app.paused].join('/');
+    const progress = $('queueRow').querySelector('.prog');
+    if(progress && sel[0] && sel[0].factory && sel[0].factory.current) progress.style.width = (sel[0].factory.current.progress*100).toFixed(1)+'%';
+    if(this.panelKey === key) return; this.panelKey = key;
+    grid.innerHTML = '';
+    const oldPortrait = $('selPortrait'); if(oldPortrait)oldPortrait.remove();
+    if(sel.length === 1 && this.app.portraits) { const portrait = this.app.portraits.copy(sel[0].def.id,sel[0].team); if(portrait){portrait.id='selPortrait';info.before(portrait);} }
     if (sel.length > 1) {
       const counts = new Map(); for (const u of sel) counts.set(u.def.id, (counts.get(u.def.id) || 0) + 1);
       for (const [id, n] of counts) {
-        const d = DEFS[id]; const el = document.createElement('div'); el.className = 'selItem'; el.title = d.name;
-        el.appendChild(iconCanvas(d.icon, colorHex(TEAM_COLORS[sel[0].team]), 44)); const c = document.createElement('span'); c.className = 'cnt'; c.textContent = n; el.appendChild(c);
+        const d = DEFS[id]; const el = document.createElement('button'); el.className = 'selItem'; el.title = d.name; el.setAttribute('aria-label',`Select ${n} ${d.name}`);
+        el.appendChild(this.app.portraits.copy(id,sel[0].team)); const c = document.createElement('span'); c.className = 'cnt'; c.textContent = n; el.appendChild(c);
         el.addEventListener('click', () => this.select(sel.filter((u) => u.def.id === id))); grid.appendChild(el);
       }
     }
     const tabs = $('buildTabs'), bgrid = $('buildGrid'), qrow = $('queueRow'); tabs.innerHTML = ''; bgrid.innerHTML = ''; qrow.innerHTML = '';
     const builders = own.filter((u) => u.built && u.def.builder); const factories = own.filter((u) => u.built && u.factory);
+    $('buildpanel').hidden=!builders.length&&!factories.length&&!own.some(u=>u.silo&&u.built);
     if (builders.length) {
       const list = new Set(); for (const b of builders) for (const id of BUILD_LISTS[b.def.builder.list]) list.add(id);
       const usable = BUILD_TABS.filter((t) => t.ids.some((id) => list.has(id)));
@@ -282,8 +296,8 @@ export class UI {
         bgrid.appendChild(b);
       }
       const l = document.createElement('span'); l.className = 'lbl'; l.textContent = 'QUEUE'; qrow.appendChild(l);
-      if (f.factory.current) { const c = f.factory.current; const qi = document.createElement('div'); qi.className = 'qi'; qi.appendChild(iconCanvas(c.def.icon, '#9be7ff', 28)); const pr = document.createElement('div'); pr.className = 'prog'; pr.style.width = (c.progress * 100).toFixed(0) + '%'; qi.appendChild(pr); qi.title = c.def.name; qrow.appendChild(qi); }
-      f.factory.queue.slice(0, 12).forEach((id, i) => { const qi = document.createElement('div'); qi.className = 'qi'; qi.appendChild(iconCanvas(DEFS[id].icon, '#7fa3c0', 28)); qi.title = DEFS[id].name + ' (click to remove)'; qi.addEventListener('click', () => { this.game.factoryDequeue(f, i); this.selDirty = true; }); qrow.appendChild(qi); });
+      if (f.factory.current) { const c = f.factory.current; const qi = document.createElement('div'); qi.className = 'qi'; qi.appendChild(this.app.portraits.copy(c.def.id)); const pr = document.createElement('div'); pr.className = 'prog'; pr.style.width = (c.progress * 100).toFixed(0) + '%'; qi.appendChild(pr); qi.title = c.def.name; qrow.appendChild(qi); }
+      f.factory.queue.slice(0, 12).forEach((id, i) => { const qi = document.createElement('button'); qi.className = 'qi'; qi.appendChild(this.app.portraits.copy(id)); qi.title = DEFS[id].name + ' (click to remove)'; qi.setAttribute('aria-label','Remove '+DEFS[id].name+' from queue'); qi.addEventListener('click', () => { this.game.factoryDequeue(f, i); this.selDirty = true; }); qrow.appendChild(qi); });
       if (f.factory.queue.length > 12) { const m = document.createElement('span'); m.className = 'lbl'; m.textContent = `+${f.factory.queue.length - 12}`; qrow.appendChild(m); }
     } else if (own.length === 1 && own[0].silo && own[0].built) {
       const u = own[0]; const d = u.def; const lbl = document.createElement('button'); lbl.textContent = d.name; lbl.classList.add('active'); tabs.appendChild(lbl);
@@ -303,13 +317,13 @@ export class UI {
     mk(this.app.paused ? 'Resume' : 'Pause', 'P', () => this.app.togglePause(), this.app.paused);
   }
   buildButton(id, onClick, active, count) {
-    const d = DEFS[id]; const b = document.createElement('div'); b.className = 'bbtn' + (active ? ' active' : '');
-    b.appendChild(iconCanvas(d.icon, d.isTitan ? '#ffd15c' : (d.silo && d.silo.ammo === 'nuke' ? '#ff8a5c' : '#d6ecff'), 30));
+    const d = DEFS[id]; const b = document.createElement('button'); b.type = 'button'; b.dataset.def = id; b.setAttribute('aria-label', `${d.name}, ${d.cost} metal`); b.className = 'bbtn' + (active ? ' active' : '');
+    b.appendChild((this.app.portraits && this.app.portraits.copy(id)) || iconCanvas(d.icon,'#a1dcf0',30));
     const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = d.name; b.appendChild(nm);
     const c = document.createElement('div'); c.className = 'cost'; c.textContent = fmtNum(d.cost); b.appendChild(c);
     if (count) { const k = document.createElement('span'); k.className = 'cnt'; k.textContent = count; b.appendChild(k); }
     b.addEventListener('click', (e) => onClick(e));
-    b.addEventListener('mouseenter', () => this.showTooltip(d)); b.addEventListener('mouseleave', () => $('tooltip').classList.add('hidden'));
+    b.addEventListener('focus', () => this.showTooltip(d)); b.addEventListener('blur', () => $('tooltip').classList.add('hidden')); b.addEventListener('mouseenter', () => this.showTooltip(d)); b.addEventListener('mouseleave', () => $('tooltip').classList.add('hidden'));
     return b;
   }
   showTooltip(d) {
@@ -319,7 +333,7 @@ export class UI {
     if (d.builder) s += ` · Build rate ${d.builder.rate}`; if (d.factory) s += ` · Build rate ${d.factory.rate}`; if (d.silo) s += ` · Ammo cost ${fmtNum(d.silo.cost)}`;
     if (d.layer === 'orbital') s += ' · Orbital: can travel between planets';
     s += '</span>'; t.innerHTML = s; t.classList.remove('hidden');
-    const r = $('buildpanel').getBoundingClientRect(); t.style.left = Math.min(this.mouse.x, innerWidth - 280) + 'px'; t.style.top = (r.top - 118) + 'px';
+    const r = $('buildpanel').getBoundingClientRect(); t.style.left = Math.min(this.mouse.x, innerWidth - 280) + 'px'; t.style.top = Math.max(60,r.top - t.getBoundingClientRect().height - 12) + 'px';
   }
   // ---------- alerts ----------
   onEvent(e) {
@@ -332,7 +346,7 @@ export class UI {
       case 'landed': if (e.unit.team === 0) this.alert(`Commander landed on ${e.unit.planet.name}. Build extractors and an energy plant.`, 'info', e.unit.planet, e.unit.dir); break;
       case 'commanderDied': this.alert(e.unit.team === 0 ? 'COMMANDER LOST' : 'ENEMY COMMANDER DESTROYED', e.unit.team === 0 ? 'bad' : 'good', e.unit.planet, e.unit.dir); break;
       case 'shake': { const d = e.pos.distanceTo(this.cam.anchor); const f = clamp(1 - d / 220, 0, 1) * clamp(1 - this.cam.dist / 500, 0.1, 1); if (f > 0) this.cam.addShake(e.amount * f); break; }
-      case 'nukeLaunch': if (e.team !== 0) { this.alert(`NUCLEAR LAUNCH DETECTED — target: ${e.planet.name}`, 'bad', e.planet, e.dir, false); this.app.audio.siren(); } else this.app.audio.alert(false); break;
+      case 'nukeLaunch': if (e.team !== 0) { this.alert(`NUCLEAR LAUNCH DETECTED : target: ${e.planet.name}`, 'bad', e.planet, e.dir, false); this.app.audio.siren(); } else this.app.audio.alert(false); break;
       case 'nukeIntercept': this.alert(e.by.team === 0 ? 'Anti-nuke launched: intercepting' : 'Enemy anti-nuke intercepting our missile', e.by.team === 0 ? 'good' : 'warn', e.by.planet, e.by.dir); break;
       case 'nukeDestroyed': this.alert('Nuke intercepted', 'info', e.planet, null); break;
       case 'nukeImpact': this.alert(`NUCLEAR DETONATION on ${e.planet.name}`, e.team === 0 ? 'good' : 'bad', e.planet, e.dir, e.team !== 0); break;
@@ -358,5 +372,5 @@ export class UI {
     $('goStats').innerHTML = [['Time', fmtTime(g.time)], ['Difficulty', this.app.settings.difficulty], ['Units built', T.stats.built], ['Units lost', T.stats.lost], ['Enemy units destroyed', T.stats.killed], ['Metal mined', fmtNum(T.stats.metalMined)], ['Damage dealt', fmtNum(T.stats.damageDealt)], ['Nukes fired', `${T.stats.nukesFired} / ${E.stats.nukesFired}`]].map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('');
     $('gameover').classList.remove('hidden');
   }
-  reset() { this.select([]); this.stopPlacing(); this.clearAlerts(); this.groups = {}; this.mode = null; this.barDirty = true; this.boxStart = null; this.boxing = false; $('selbox').classList.add('hidden'); $('gameover').classList.add('hidden'); }
+  reset() { this.panelKey = null; this.planetKey = null; this.select([]); this.stopPlacing(); this.clearAlerts(); this.groups = {}; this.mode = null; this.barDirty = true; this.boxStart = null; this.boxing = false; $('selbox').classList.add('hidden'); $('gameover').classList.add('hidden'); }
 }

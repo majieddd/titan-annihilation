@@ -17,7 +17,7 @@ class GPUParticles {
   constructor(cap, { additive = true, sharp = false, renderOrder = 20 } = {}) {
     this.cap = cap; this.head = 0; this.dirty = false; this.time = 0; this.centerFor = null;
     // Slots are only culled inside the vertex shader, so drawing the whole capacity every frame pays
-    // a vertex invocation per never-used slot — from the title screen onward. Track how much of the
+    // a vertex invocation per never-used slot : from the title screen onward. Track how much of the
     // ring has been written and when the newest particle expires, and draw only that.
     this.used = 0; this.lastEnd = -1;
     const g = instancedQuad(cap);
@@ -168,7 +168,7 @@ export class Effects {
     scene.add(this.sparks.mesh, this.glow.mesh, this.smoke.mesh);
     const addMat = (extra = {}) => new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, ...extra });
     this.beams = new InstPool(new THREE.BoxGeometry(1, 1, 1), addMat(), 500, { renderOrder: 22 }); this.beamList = [];
-    this.rings = new InstPool(new THREE.RingGeometry(0.72, 1, 48).rotateX(-Math.PI / 2), addMat({ side: THREE.DoubleSide }), 120, { renderOrder: 22 }); this.ringList = [];
+    this.rings = new InstPool(new THREE.RingGeometry(0.96, 1, 48).rotateX(-Math.PI / 2), addMat({ side: THREE.DoubleSide }), 120, { renderOrder: 22 }); this.ringList = [];
     this.bolts = new InstPool(new THREE.BoxGeometry(0.24, 0.24, 1), addMat(), 800, { renderOrder: 22 });
     this.shells = new InstPool(new THREE.SphereGeometry(0.42, 8, 6), addMat(), 500, { renderOrder: 22 });
     this.missiles = new InstPool(new THREE.ConeGeometry(0.28, 1.2, 6).rotateX(Math.PI / 2), lit(new THREE.MeshStandardMaterial({ color: 0xdde3ea, roughness: 0.4, metalness: 0.5 }), 'fx_missile'), 400, { shadow: false });
@@ -198,7 +198,7 @@ export class Effects {
   upAt(p, out) { const c = this.centerFor(p.x, p.y, p.z); return out.copy(p).sub(c).normalize(); }
   buildSpotPads() {
     // One pad mesh PER PLANET. The pads are lit surfaces, and each planet faces its own star, so a
-    // single shared mesh could only carry one sun direction — pads on every other planet were lit
+    // single shared mesh could only carry one sun direction : pads on every other planet were lit
     // from the focused planet's sun. The glow rings stay one mesh: they are unlit additive sprites.
     let n = 0; for (const p of this.planets) n += p.spots.length;
     const padGeo = new THREE.CylinderGeometry(2.3, 2.6, 0.5, 6);
@@ -325,7 +325,7 @@ export class Effects {
       const r = this.ringList[i]; r.age += dt; if (r.age >= r.life) { this.ringList[i] = this.ringList[this.ringList.length - 1]; this.ringList.pop(); continue; }
       const f = r.age / r.life; const rad = r.maxR * (1 - Math.pow(1 - f, 2.2)); const a = 1 - f;
       frameQuat(r.n, anyTangent(r.n, _t), _q); _v.copy(r.p).addScaledVector(r.n, 0.5); _s.set(rad, 1, rad); _m.compose(_v, _q, _s);
-      this.rings.add(_m, r.col[0] * a * 1.5, r.col[1] * a * 1.5, r.col[2] * a * 1.5);
+      this.rings.add(_m, r.col[0] * a * 0.8, r.col[1] * a * 0.8, r.col[2] * a * 0.8);
     }
     this.rings.end();
     this.decals.begin();

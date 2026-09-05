@@ -13,7 +13,7 @@ export class PlanetCamera {
     this.dragging = false; this.dragButton = -1; this.dragMoved = 0; this.lastX = 0; this.lastY = 0; this.spin = 0; this.autoTilt = true; this.zoomLerp = 9;
     this.sysQ = new THREE.Quaternion(); this.sysDist = 7500; this.sysTarget = 7500; this.sysCenter = new THREE.Vector3();
     this.blend = 0; this.prevPos = new THREE.Vector3(); this.prevQuat = new THREE.Quaternion();
-    this.onFocus = null; this.onSystem = null;
+    this.onFocus = null; this.onSystem = null; this.panX = 0; this.panY = 0; this.reducedMotion = false;
     this.setAnchor(new THREE.Vector3(0, 0, 1)); this.attach(dom);
   }
   get maxDist() { return this.planet ? this.planet.R * 4.2 : 1500; }
@@ -52,7 +52,7 @@ export class PlanetCamera {
     const ang = angleBetween(this.normal, dir); if (ang > 1e-5) { tangentToward(this.normal, dir, _b); this.moveToward(_b, ang); }
     if (dist !== undefined) this.targetDist = clamp(dist, this.minDist, this.maxDist);
   }
-  addShake(v) { this.shake = Math.min(3, this.shake + v); }
+  addShake(v) { if (this.reducedMotion) return; this.shake = Math.min(3, this.shake + v); }
   get tilt() { return this.autoTilt ? lerp(1.0, 0.1, smoothstep(14, this.maxDist * 0.6, this.dist)) : 0.9; }
   update(dt) {
     const k = this.keys; const cam = this.camera;
@@ -60,8 +60,10 @@ export class PlanetCamera {
       const R = this.planet.R;
       if (this.enabled) {
         const sp = this.dist * 1.1 * dt;
-        if (k.KeyW || k.ArrowUp) this.moveForward(sp); if (k.KeyS || k.ArrowDown) this.moveForward(-sp);
-        if (k.KeyA || k.ArrowLeft) this.moveRight(-sp); if (k.KeyD || k.ArrowRight) this.moveRight(sp);
+        const blend = 1 - Math.exp(-dt * 18);
+        this.panX = lerp(this.panX, Number(!!k.ArrowRight) - Number(!!k.ArrowLeft), blend);
+        this.panY = lerp(this.panY, Number(!!k.ArrowUp) - Number(!!k.ArrowDown), blend);
+        this.moveRight(this.panX * sp); this.moveForward(this.panY * sp);
         if (k.KeyQ) this.yaw(dt * 1.4); if (k.KeyE) this.yaw(-dt * 1.4);
       }
       if (this.spin) this.moveRight(-this.spin * dt * R);
@@ -77,8 +79,8 @@ export class PlanetCamera {
     } else {
       if (this.enabled) {
         // keys move the camera in the key's direction (drag moves the world under the mouse)
-        if (k.KeyA || k.ArrowLeft) this.sysYaw(-dt * 0.9); if (k.KeyD || k.ArrowRight) this.sysYaw(dt * 0.9);
-        if (k.KeyW || k.ArrowUp) this.sysPitch(-dt * 0.6); if (k.KeyS || k.ArrowDown) this.sysPitch(dt * 0.6);
+        if (k.ArrowLeft) this.sysYaw(-dt * 0.9); if (k.ArrowRight) this.sysYaw(dt * 0.9);
+        if (k.ArrowUp) this.sysPitch(-dt * 0.6); if (k.ArrowDown) this.sysPitch(dt * 0.6);
       }
       if (this.spin) this.sysYaw(this.spin * dt * 8);
       this.sysDist = lerp(this.sysDist, this.sysTarget, 1 - Math.exp(-dt * 5));
@@ -115,7 +117,7 @@ export class PlanetCamera {
     dom.addEventListener('contextmenu', (e) => e.preventDefault());
     dom.addEventListener('mousedown', (e) => { if (e.button === 1 || e.button === 2) { this.dragging = true; this.dragButton = e.button; this.dragMoved = 0; this.lastX = e.clientX; this.lastY = e.clientY; if (e.button === 1) e.preventDefault(); } });
     window.addEventListener('mousemove', (e) => {
-      if (!this.dragging) return;
+      if (!this.dragging || !this.enabled) return;
       const dx = e.clientX - this.lastX, dy = e.clientY - this.lastY; this.lastX = e.clientX; this.lastY = e.clientY; this.dragMoved += Math.abs(dx) + Math.abs(dy);
       if (this.dragMoved < 4 && this.dragButton === 2) return;
       if (this.mode === 'system') { this.sysYaw(-dx * 0.005); this.sysPitch(-dy * 0.004); return; }
@@ -124,7 +126,7 @@ export class PlanetCamera {
     });
     window.addEventListener('mouseup', (e) => { if (e.button === this.dragButton) { this.dragging = false; this.dragButton = -1; } });
     dom.addEventListener('wheel', (e) => {
-      e.preventDefault(); if (!this.planet) return;
+      e.preventDefault(); if (!this.planet || !this.enabled) return;
       const factor = Math.exp(clamp(e.deltaY, -120, 120) * 0.0016);
       if (this.mode === 'planet') {
         if (factor > 1 && this.targetDist >= this.maxDist * 0.98) { this.enterSystem(); return; }
@@ -135,8 +137,8 @@ export class PlanetCamera {
         if (factor < 1 && this.sysTarget <= 2700) { const pick = this.pickPlanet(e.clientX, e.clientY, _d); const p = pick ? pick.planet : this.system.nearest(this.camera.position); this.focus(p, pick ? pick.dir : null, p.R * 3.5); }
       }
     }, { passive: false });
-    window.addEventListener('keydown', (e) => { if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) return; this.keys[keyCode(e)] = true; });
+    window.addEventListener('keydown', (e) => { if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) return; const key = keyCode(e); if (key.startsWith('Arrow')) e.preventDefault(); this.keys[key] = true; });
     window.addEventListener('keyup', (e) => { this.keys[keyCode(e)] = false; });
-    window.addEventListener('blur', () => { this.keys = {}; this.dragging = false; });
+    window.addEventListener('blur', () => { this.keys = {}; this.dragging = false; this.panX = this.panY = 0; });
   }
 }

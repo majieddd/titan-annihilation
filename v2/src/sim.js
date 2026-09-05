@@ -49,9 +49,9 @@ export class Game {
     const u = {
       id: nextId++, def, team, planet, pos: new THREE.Vector3(), dir: dir.clone().normalize(), fwd: new THREE.Vector3(), quat: new THREE.Quaternion(),
       hp: 0, progress: opts.progress ?? 1, built: false, orders: [], path: null, pathIdx: 0, pathGoal: null, pathPending: false,
-      target: null, attackTarget: null, engage: 'idle', moveGoal: null, holdFacing: null, cd: def.weapons ? def.weapons.map(() => 0) : null, scanT: Math.random() * 0.3,
+      target: null, attackTarget: null, engage: 'idle', moveGoal: null, holdFacing: null, cd: def.weapons ? def.weapons.map(() => 0) : null, scanT: this.rng() * 0.3,
       turret: 0, turretGoal: 0, speed: 0, alt: 0, flash: 0, phase: 0, recoil: 0, lastWpIdx: -1, stuck: 0, stuckT: 0, lastGoalDist: 1e9, giveUp: 0, dead: false, drop: opts.drop || 0,
-      moving: false, yawRate: 0, roll: 0, building: null, ai: null, spot: null, loiter: null, overshoot: null, bobPhase: Math.random() * 6.28, assist: 0,
+      moving: false, yawRate: 0, roll: 0, building: null, ai: null, spot: null, loiter: null, overshoot: null, bobPhase: this.rng() * 6.28, assist: 0,
       factory: def.factory ? { queue: [], current: null, loop: false, rally: null } : null, parentFactory: null, lastHitT: -99, killedBy: null, lastBuildT: this.time,
       transit: null, link: null, silo: def.silo ? { progress: 0, ammo: 0, active: true } : null,
     };
@@ -61,6 +61,7 @@ export class Game {
     if (def.layer === 'air') u.alt = opts.groundStart ? 1.5 : AIR_ALT;
     else if (def.layer === 'orbital') u.alt = opts.groundStart ? 1.5 : this.orbitTargetAlt(u);
     this.updateTransform(u);
+    u.prevPos = u.pos.clone(); u.prevQuat = u.quat.clone(); u.prevTurret = 0; u.prevPhase = 0; u.prevRecoil = 0; u.visualMotion = 0;
     this.units.push(u); this.teams[team].units.push(u);
     if (def.kind === 'structure') planet.blockCircle(u.dir, def.radius + 0.6, +1);
     if (def.kind === 'commander') this.teams[team].commander = u;
@@ -152,6 +153,14 @@ export class Game {
       this.setOrder(u, { type: 'attack', target }, queue); }
   }
   orderBuild(units, target, queue = false) { for (const u of units) { if (!u.built || u.dead || !u.def.builder) continue; if (!this.canReach(u, target.planet)) continue; this.setOrder(u, { type: 'build', target }, queue); } }
+  orderRepair(units, target, queue = false) {
+    if (!target || target.dead || !target.built || target.hp >= target.def.hp) return 0;
+    let n = 0;
+    for (const u of units) if (u !== target && u.built && !u.dead && u.def.builder && u.team === target.team && this.canReach(u, target.planet)) {
+      this.setOrder(u, { type: 'repair', target }, queue); n++;
+    }
+    return n;
+  }
   orderStop(units) { for (const u of units) { u.orders = []; u.path = null; u.attackTarget = null; u.engage = 'idle'; u.overshoot = null; if (u.def.mobile && u.def.layer === 'ground') u.speed = 0; } }
   factoryQueue(f, defId, count = 1) { if (!f.factory) return; for (let i = 0; i < count; i++) f.factory.queue.push(defId); }
   factoryDequeue(f, idx) { if (!f.factory) return; f.factory.queue.splice(idx, 1); }
@@ -176,7 +185,7 @@ export class Game {
   orderPlanet(o) { return o.planet || (o.target && o.target.planet) || (o.tp && o.tp.planet) || null; }
 
   // ---------- economy ----------
-  spend(team, rate, dt) { const t = this.teams[team]; const s = rate * dt * t.eff; t.spentM += s; t.spentE += s * EPM; t.demandM += rate; return s; }
+  spend(team, rate, dt) { const t = this.teams[team]; const s = Math.max(0, Math.min(rate * dt * t.eff, t.metal + t.incomeM * dt - t.spentM, (t.energy + t.incomeE * dt - t.spentE) / EPM)); t.spentM += s; t.spentE += s * EPM; t.demandM += rate; return s; }
   economyPre(dt) {
     for (const t of this.teams) {
       let im = 0, ie = 0;
@@ -197,6 +206,7 @@ export class Game {
   // ---------- main step ----------
   step(dt) {
     this.time += dt; this.tick++;
+    for (const u of this.units) { u.prevPos.copy(u.pos); u.prevQuat.copy(u.quat); u.prevTurret = u.turret; u.prevPhase = u.phase; u.prevRecoil = u.recoil; }
     this.economyPre(dt);
     this.hash.clear();
     for (const u of this.units) if (!u.dead && !u.transit && u.def.layer === 'ground' && (u.built || u.def.kind === 'structure' || u.def.isTitan) && u.drop <= 0) this.hash.insert(u);
@@ -221,7 +231,7 @@ export class Game {
     // Wrap the gait phase. It is uploaded as a float32 and fed to sin(); left to grow it reaches five
     // figures in a long match, where float32 steps are coarse enough to make the walk cycle visibly
     // stutter. The angle is meaningless beyond one turn anyway.
-    if (u.def.mobile) u.phase = (u.phase + u.speed * dt * (u.def.kind === 'bot' ? 1.15 : 1.7)) % 6.283185307179586;
+    if (u.def.mobile) u.phase = (u.phase + u.speed * dt * (u.def.kind === 'bot' ? 1.15 : u.def.kind === 'commander' ? 0.8 : u.def.isTitan ? 0.25 : 1.7)) % 6.283185307179586;
     if (u.recoil > 0) u.recoil = Math.max(0, u.recoil - dt * 4.5);
     const def = u.def;
     if (u.flash > 0) u.flash *= Math.exp(-dt * 7);
@@ -265,6 +275,24 @@ export class Game {
         break;
       }
       case 'attack': { const t = o.target; if (!t || t.dead || t.transit) { this.finishOrder(u); break; } u.engage = 'attack'; u.attackTarget = t; break; }
+      case 'repair': {
+        const t = o.target;
+        if (!t || t.dead || !t.built || t.team !== u.team || t.transit || t.hp >= t.def.hp) { this.finishOrder(u); break; }
+        if (u.pos.distanceTo(t.pos) > u.def.builder.range + t.def.radius) u.moveGoal = t.dir;
+        else {
+          u.holdFacing = t.dir;
+          const basis = Math.max(t.def.cost, t.def.kind === 'commander' ? 3000 : 1) * 0.6;
+          const rate = Math.min(u.def.builder.rate, (t.def.hp - t.hp) / t.def.hp * basis / dt);
+          const spent = this.spend(u.team, rate, dt);
+          t.hp = Math.min(t.def.hp, t.hp + spent / basis * t.def.hp);
+          if (spent > 0 && this.tick % 3 === 0) {
+            _a.copy(u.pos).addScaledVector(u.dir, u.def.height * 0.6);
+            _b.copy(t.pos).addScaledVector(t.dir, t.def.height * 0.5);
+            this.fx.nanolathe(_a, _b, this.teams[u.team].color);
+          }
+        }
+        break;
+      }
       case 'build': {
         const t = o.target; if (!t || t.dead) { this.finishOrder(u); break; }
         t.lastBuildT = this.time;
@@ -419,7 +447,7 @@ export class Game {
     if (!t) {
       if (u.target && (u.target.dead || u.target.progress <= 0 || u.target.drop > 0 || u.target.transit || u.target.planet !== u.planet)) u.target = null;
       u.scanT -= dt;
-      if (u.scanT <= 0 || (!u.target && u.engage !== 'idle')) { u.scanT = 0.3 + Math.random() * 0.1; u.target = this.acquireTarget(u); }
+      if (u.scanT <= 0) { u.scanT = 0.3 + this.rng() * 0.1; u.target = this.acquireTarget(u); }
       t = u.target;
       if (t && u.engage === 'idle') { let inR = false; for (const w of def.weapons) if (u.pos.distanceTo(t.pos) <= w.range) inR = true; if (!inR) t = null; }
     } else u.target = t;
@@ -687,6 +715,6 @@ export class Game {
   }
   checkEnd() {
     if (this.over) return;
-    for (const t of this.teams) { if (t.commander && t.commander.dead) { t.alive = false; this.over = true; this.winner = 1 - t.id; this.emit({ type: 'gameover', winner: this.winner }); } }
+    for (const t of this.teams) { if (t.commander && t.commander.dead) { t.alive = false; this.over = true; this.winner = 1 - t.id; this.emit({ type: 'gameover', winner: this.winner }); return; } }
   }
 }

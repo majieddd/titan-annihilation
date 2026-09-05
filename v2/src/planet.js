@@ -115,7 +115,7 @@ export function injectSun(mat, uSunView, key) {
     // shader has to override the direction per material. onBeforeCompile runs BEFORE three resolves
     // #include directives, so a replace() against a chunk's body silently matches nothing (this is
     // how it failed until v3.4.1: uSunView was declared, bound and then optimised away as unused).
-    // Inline the chunk here with the call site patched, and only for light 0 — the key light — so the
+    // Inline the chunk here with the call site patched, and only for light 0 : the key light : so the
     // styles' fill light keeps its own direction. UNROLLED_LOOP_INDEX is three's per-iteration macro.
     if (shader.fragmentShader.includes('#include <lights_fragment_begin>')) {
       const body = THREE.ShaderChunk.lights_fragment_begin.replace(
@@ -168,7 +168,7 @@ void atAerial(vec3 camW, vec3 posW, out vec3 T, out vec3 S) {
 `;
 const AT_KEYS = ['uAtC', 'uAtR', 'uAtRa', 'uAtHr', 'uAtHm', 'uAtI', 'uAtOn', 'uAtBr', 'uAtBm', 'uAtSun', 'uAtK'];
 export function atmoUniformsOf(uniforms) { const o = {}; for (const k of AT_KEYS) o[k] = uniforms[k]; return o; }
-/** aerial perspective (atmospheric in-scatter + transmittance) for lit materials — replaces the old exponential fog */
+/** aerial perspective (atmospheric in-scatter + transmittance) for lit materials : replaces the old exponential fog */
 export function injectFog(mat, uniforms, key) {
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (shader, renderer) => {
@@ -246,7 +246,7 @@ function makeTerrainMaterial(planet, tA, tB, tC) {
         float hA = (sa.a - 0.3) / 0.7, hB = (sb.a - 0.3) / 0.7, hC = (sc.a - 0.3) / 0.7;
         // Height blending picks a winning material from the detail texture's height channel. Once that
         // texture is near or past a pixel wide, the sampled height wobbles with the mip level and the
-        // winner flips from frame to frame — the crawling speckle that showed up on shores and in
+        // winner flips from frame to frame : the crawling speckle that showed up on shores and in
         // hollows, where two materials sit at nearly equal weight. Fade the height's authority out with
         // distance and widen the crossfade window so the pair dissolves smoothly instead of competing.
         float dV = length(vViewPosition);
@@ -468,8 +468,8 @@ export class Planet {
   }
   heightAt(d) { return this.heightAtXYZ(d.x, d.y, d.z); }
   /** Surface radius under a direction: where the ray from the planet centre meets the TRIANGLE
-      that is actually drawn there. Everything in the world is placed with this — props, units,
-      structures, decals, pads, the camera anchor — so it has to agree with the mesh exactly or
+      that is actually drawn there. Everything in the world is placed with this : props, units,
+      structures, decals, pads, the camera anchor : so it has to agree with the mesh exactly or
       things float and sink.
       Two earlier versions were both wrong in ways that showed up on ridges. Blending a vertex
       with its one-ring neighbours by inverse distance is a smoothing filter: it pulled peaks down
@@ -685,7 +685,7 @@ export class Planet {
       // salt-and-pepper; and at any distance those strokes break into isolated specks that the ink
       // pass then draws a black outline around, scattering ticks across the hillside. Solid forms
       // have a continuous normal, hold a midtone, cannot fringe, and give the ink one clean
-      // silhouette to follow — which is the whole point of the house style.
+      // silhouette to follow : which is the whole point of the house style.
       const TAU2 = Math.PI * 2;
       /** one ridged conical skirt of boughs; the rim zig-zags so the silhouette reads as needles */
       const skirt = (out, y0, h, r, seg, droop, col, phase) => {
@@ -711,7 +711,7 @@ export class Planet {
         g.setAttribute('color', new THREE.Float32BufferAttribute(out.col, 3)); return g; };
       // Needle green in LINEAR reflectance, matching the convention RAMPS and the other props use.
       // Every channel stays well clear of luminance*(1 - 1/1.3), below which the style's albedo
-      // saturation would drive it negative and clamp it to zero — which is what turned the old
+      // saturation would drive it negative and clamp it to zero : which is what turned the old
       // canopy into flat electric green with no red or blue left in it at all.
       const NEEDLE = [[0.170, 0.255, 0.120], [0.189, 0.286, 0.132], [0.208, 0.317, 0.143], [0.227, 0.348, 0.155], [0.248, 0.380, 0.168]];
       const coniferGeo = () => {
@@ -813,6 +813,10 @@ export class Planet {
       }
       mesh.count = n; mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       mesh.castShadow = !!k.tree; mesh.receiveShadow = true; mesh.frustumCulled = true; k.geo.computeBoundingSphere(); mesh.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), R + 40);
+      mesh.userData.allMatrices = mesh.instanceMatrix.array.slice(0,n*16);
+      mesh.userData.allColors = mesh.instanceColor.array.slice(0,n*3);
+      mesh.userData.total = n;
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
       this.group.add(mesh); this.props.push(mesh);
       if (canopyMesh) { canopyMesh.count = n; canopyMesh.instanceMatrix.needsUpdate = true; if (canopyMesh.instanceColor) canopyMesh.instanceColor.needsUpdate = true; canopyMesh.castShadow = true; canopyMesh.receiveShadow = true; canopyMesh.frustumCulled = true; canopyMesh.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), R + 40); this.group.add(canopyMesh); this.props.push(canopyMesh); }
     }
@@ -824,7 +828,28 @@ export class Planet {
   }
   update(dt, camera) {
     this.time += dt; this.uniforms.uTime.value = this.time;
-    const d = camera.position.distanceTo(this.center); const alt = d - this.R; this.uniforms.uCamDist.value = d;
+    const d = camera.position.distanceTo(this.center);
+    this._cullT = (this._cullT || 0) + dt;
+    const vx=camera.position.x-this.center.x, vy=camera.position.y-this.center.y, vz=camera.position.z-this.center.z;
+    for (const prop of this.props) {
+      prop.visible = d < this.R * 3.5;
+      if (!prop.visible || this._cullT < 0.1 || !prop.userData.allMatrices) continue;
+      const data=prop.userData, matrices=data.allMatrices, colors=data.allColors; let visible=0;
+      // A conservative horizon margin keeps visible crowns and their shadows in the batch.
+      for(let i=0;i<data.total;i++) {
+        const k=i*16,x=matrices[k+12],y=matrices[k+13],z=matrices[k+14];
+        const radius=Math.sqrt(x*x+y*y+z*z);
+        if((x*vx+y*vy+z*vz)/radius < this.R-36) continue;
+        prop.instanceMatrix.array.set(matrices.subarray(k,k+16),visible*16);
+        prop.instanceColor.array.set(colors.subarray(i*3,i*3+3),visible*3); visible++;
+      }
+      prop.count=visible;
+      for(const [attribute,size] of [[prop.instanceMatrix,16],[prop.instanceColor,3]]) {
+        attribute.clearUpdateRanges(); if(visible)attribute.addUpdateRange(0,visible*size); attribute.needsUpdate=true;
+      }
+    }
+    if(this._cullT>=0.1)this._cullT=0;
+    this.terrain.castShadow = this.focused && d < this.R + 600; const alt = d - this.R; this.uniforms.uCamDist.value = d;
     this.uniforms.uSunView.value.copy(this.sunDir).transformDirection(camera.matrixWorldInverse);
     if (this.clouds) {
       this.clouds.rotation.y += dt * 0.003; this.clouds2.rotation.y += dt * 0.0045;

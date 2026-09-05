@@ -122,7 +122,7 @@ export const STYLE_LIGHT_GLSL = `
 {
   vec3 stAlb = max(diffuseColor.rgb, vec3(0.003)); float stAlbL = max(stLum(stAlb), 1e-3);
   // directDiffuse already carries three's (1 - metalness) factor, so a metallic hull divided by full
-  // albedo read as permanently unlit — every unit sat in the shadow band of the toon styles.
+  // albedo read as permanently unlit : every unit sat in the shadow band of the toon styles.
   float stDL = clamp(stLum(reflectedLight.directDiffuse) / (stAlbL * max(1.0 - metalnessFactor, 1e-3)) / max(uStKey, 1e-3), 0.0, 1.0);
   float stIL = stLum(reflectedLight.indirectDiffuse) / stAlbL;
   vec3 stSpec = reflectedLight.directSpecular + reflectedLight.indirectSpecular;
@@ -211,6 +211,15 @@ export const STYLE_LIGHT_GLSL = `
 const V = (r, g, b) => [r, g, b];
 export const STYLES = [
   {
+    id: 'tactical', name: 'Tactical Sci-fi', hint: 'Crisp armor, readable terrain and restrained light. Built for commanding an army.',
+    world: { detail: 7, cards: false, grass: true },
+    mat: { lod: 0.65, normal: 0.55, poster: 0, sat: 0.95, bands: 0, soft: 0.06, ambient: 1, spec: 0.72, hatch: 0, halftone: 0, outline: 0, clay: 0.16, faction: 0, tooth: 0, jitter: 0, rim: 0, tile: 0, flat: 0, fxGain: 0.78, shadowTint: V(0.91,0.97,1.04), litTint: V(1.03,1.01,0.98) },
+    light: { sun: 3.4, sunColor: 0xffefd7, hemi: 0.55, env: 0.8, fill: 0.8, fillColor: 0xa8c5dd },
+    atmo: { aerial: 0.48, sunI: 0.7 },
+    post: { tone: 'aces', exposure: 1.04, gtao: false, bloom: [0.13,0.35,1.05], edge: null, halftone: null, tilt: null,
+      grade: { sat: 1.02, con: 1.03, vig: 0.12, sharp: 0.1, ca: 0, grain: 0, poster: 0, paper: 0, shadowTint: V(0.97,1.0,1.03), highTint: V(1.02,1.01,0.98) } },
+  },
+  {
     id: 'polished', name: 'Polished Diorama Ink', hint: 'The house style: the diorama\'s clay, saturation and rim light with realism\'s soft glow, atmospheric mist and full-detail materials, drawn with hard black outlines and a gentle tilt-shift.',
     mat: { lod: 2.1, normal: 0.32, poster: 0, sat: 1.3, bands: 0, soft: 0.06, ambient: 1, spec: 0.42, hatch: 0, halftone: 0, outline: 0, clay: 0.85, faction: 0, tooth: 0, jitter: 0, rim: 0, rimColor: V(1, 1, 1), tile: 0, flat: 0, fxGain: 1.0, shadowTint: V(0.9, 0.93, 1.02), litTint: V(1.03, 1.0, 0.96) },
     light: { sun: 3.6, sunColor: 0xfff0da, hemi: 0.5, env: 0.95, fill: 0.55, fillColor: 0xa8c8ff },
@@ -267,7 +276,7 @@ export const STYLES = [
       grade: { sat: 1.15, con: 1.12, vig: 0.3, sharp: 0.4, ca: 0, grain: 0.03, poster: 0, paper: 0.1, shadowTint: V(0.96, 0.97, 1.03), highTint: V(1.03, 1.0, 0.97) } },
   },
   {
-    id: 'reliquary', name: 'Reliquary', hint: 'Ported from Cosmic Conquest: Reliquary — wrap-lit N.L posterised into four bands with the boundary jittered per facet, a three-stop hued ramp whose shadows are violet rather than black, hemispheric ambient, paint tooth, a hard-stepped wet specular and a neon rim, on flat-shaded low-poly.',
+    id: 'reliquary', name: 'Reliquary', hint: 'Ported from Cosmic Conquest: Reliquary : wrap-lit N.L posterised into four bands with the boundary jittered per facet, a three-stop hued ramp whose shadows are violet rather than black, hemispheric ambient, paint tooth, a hard-stepped wet specular and a neon rim, on flat-shaded low-poly.',
     mat: { lod: 8, normal: 0, poster: 0, sat: 1.0, bands: 0, soft: 0.04, ambient: 1, spec: 1, hatch: 0, halftone: 0, outline: 0, clay: 0, faction: 0, tooth: 0, jitter: 0, rim: 0, rimColor: V(1, 0.4, 0.9), tile: 0, flat: 1, fxGain: 0.6, fxTint: V(0.9, 0.75, 1.0), shadowTint: V(1, 1, 1), litTint: V(1, 1, 1),
       ramp: { bands: 4, rampGamma: 1.28, facetJitter: 0.19, shadowLift: 0.24, bandCap: 1.0, shadowBand: 0.16, shadowEdge: 0.30, shadowSoft: 0.30, shadowDepth: 0.30, ambient: 0.30, specStrength: 0.46, specPower: 14, rimStrength: 0.85, rimPower: 3.4, toothStrength: 0.46, toothScale: 0.42, albTint: V(0.40, 0.31, 0.62), albMix: 0.78, palette: derivePalette(0x38e8ff, 0.66, { rimShift: 0.02 }) } },
     light: { sun: 3.0, sunColor: 0xffffff, hemi: 0, env: 0, fill: 0, fillColor: 0xffffff },
@@ -277,7 +286,7 @@ export const STYLES = [
     world: { detail: 7, grass: false, cards: false },
   },
   {
-    id: 'coil', name: 'The Coil', hint: 'Ported from Cosmic Conquest: The Coil — the same painted ramp in its night register: cobalt cast, a band cap that keeps the ground off the lit step, a tight glint instead of a wet sheen, and a darker exposure.',
+    id: 'coil', name: 'The Coil', hint: 'Ported from Cosmic Conquest: The Coil : the same painted ramp in its night register: cobalt cast, a band cap that keeps the ground off the lit step, a tight glint instead of a wet sheen, and a darker exposure.',
     mat: { lod: 8, normal: 0, poster: 0, sat: 1.0, bands: 0, soft: 0.04, ambient: 1, spec: 1, hatch: 0, halftone: 0, outline: 0, clay: 0, faction: 0, tooth: 0, jitter: 0, rim: 0, rimColor: V(0.22, 0.9, 1.0), tile: 0, flat: 1, fxGain: 0.5, fxTint: V(0.55, 0.85, 1.0), shadowTint: V(1, 1, 1), litTint: V(1, 1, 1),
       ramp: { bands: 4, rampGamma: 1.24, facetJitter: 0.19, shadowLift: 0.24, bandCap: 0.70, shadowBand: 0.16, shadowEdge: 0.30, shadowSoft: 0.30, shadowDepth: 0.30, ambient: 0.26, specStrength: 0.20, specPower: 90, rimStrength: 0.85, rimPower: 3.4, toothStrength: 0.46, toothScale: 0.42, albTint: V(0.17, 0.27, 0.55), albMix: 0.85, palette: derivePalette(0x38e8ff, 0.66, { rimShift: 0.02, groundL: 0.14 }) } },
     light: { sun: 3.0, sunColor: 0xffffff, hemi: 0, env: 0, fill: 0, fillColor: 0xffffff },
@@ -304,7 +313,7 @@ export const STYLES = [
       grade: { sat: 1.14, con: 1.06, vig: 0.3, sharp: 0.2, ca: 0.004, grain: 0.02, poster: 0, paper: 0, shadowTint: V(1.0, 1.0, 1.02), highTint: V(1.03, 1.0, 0.97) } },
   },
   {
-    id: 'diorama', name: 'Diorama', hint: 'Original: a war table of painted miniatures — matte clay surfaces, studio key and fill lights, tilt-shift focus, no haze.',
+    id: 'diorama', name: 'Diorama', hint: 'Original: a war table of painted miniatures : matte clay surfaces, studio key and fill lights, tilt-shift focus, no haze.',
     mat: { lod: 1.2, normal: 0.6, poster: 0, sat: 1.28, bands: 0, soft: 0.06, ambient: 1, spec: 0.45, hatch: 0, halftone: 0, outline: 0.15, clay: 1, faction: 0, shadowTint: V(0.8, 0.82, 0.96), litTint: V(1.04, 1.0, 0.94) },
     light: { sun: 3.6, sunColor: 0xffe6c8, hemi: 0.3, env: 0.7, fill: 0.5, fillColor: 0xa8c8ff },
     atmo: { aerial: 0.15, sunI: 0.7 },

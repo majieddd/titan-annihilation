@@ -6,7 +6,7 @@ import { detailTexture, getAnisotropy } from './textures.js';
  *  Falls back to the procedural generator when a set is unavailable (offline / artifact without embedded data). */
 const REAL = new Map();
 export const TEX_KINDS = ['grass', 'rock', 'sand', 'snow', 'dust', 'ice', 'crust', 'panel', 'bark'];
-/** which maps each packed set ships with (see tools/fetch_textures.py) — avoids probing for files that do not exist */
+/** which maps each packed set ships with (see tools/fetch_textures.py) : avoids probing for files that do not exist */
 const MAPS = { grass: 'color normal rough ao height', rock: 'color normal rough ao height', sand: 'color normal rough ao height', snow: 'color normal rough ao height', dust: 'color normal rough ao height', ice: 'color normal rough height', crust: 'color normal rough height emission', panel: 'color normal rough height', bark: 'color normal rough ao height' };
 export function getTextureSet(kind) { return REAL.get(kind) || detailTexture(kind === 'bark' ? 'rock' : kind); }
 export function hasRealTexture(kind) { return REAL.has(kind); }
@@ -17,7 +17,7 @@ export async function loadRealTextures(kinds = TEX_KINDS, onProgress) {
   if (!data && location.protocol === 'file:') return REAL;
   for (const kind of kinds) {
     try {
-      const src = (m) => (data && data[kind] ? data[kind][m] : `assets/tex/${kind}/${m}.jpg`);
+      const src = (m) => (data && data[kind] ? data[kind][m] : `../assets/tex/${kind}/${m}.jpg`);
       if (data && !data[kind]) continue;
       const avail = (MAPS[kind] || 'color normal rough ao height').split(' ');
       const [col, nrm, rgh, ao, hgt, emi] = await Promise.all(['color', 'normal', 'rough', 'ao', 'height', 'emission'].map((m) => (!avail.includes(m) || (data && data[kind] && !data[kind][m])) ? Promise.resolve(null) : loadImage(src(m)).catch(() => null)));

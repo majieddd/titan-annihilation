@@ -13,31 +13,29 @@ import { PlanetCamera } from './camera.js';
 import { Game } from './sim.js';
 import { AI } from './ai.js';
 import { UI } from './ui.js';
+import { ModelPortraits } from './portraits.js';
+import { TacticalUI } from './tactical.js';
 import { Effects } from './effects.js';
 import { UnitRenderer } from './models.js';
 import { GameAudio } from './audio.js';
 import { TEAM_COLORS } from './defs.js';
 import { setAnisotropy, setTextureSize, nebulaTexture } from './textures.js';
 import { loadRealTextures, TEX_KINDS } from './assets.js';
-import { mulberry32, hashString, clamp, Simplex, VERSION } from './util.js';
+import { mulberry32, hashString, clamp, Simplex, VERSION, TAU } from './util.js';
 
 const STEP = 1 / 60;
 const $ = (id) => document.getElementById(id);
-const app = { state: 'loading', paused: false, settings: { difficulty: 'normal', biome: 'earth', seed: 'titan', quality: 'high', planets: 5, style: 'polished' }, game: null, ai: null, system: null, fx: null, fxGroup: null };
-try { const s = JSON.parse(localStorage.getItem('ta_settings') || 'null'); if (s) Object.assign(app.settings, s); } catch (e) { }
-// A returning player carries a saved planet count from before every biome was guaranteed a slot, so
-// they would still launch into a three-world system and never see two of the five worlds. Migrate a
-// stored count up to the full set once, and record that it was done so a deliberate choice sticks.
-if (app.settings.sv !== 1) { if ((app.settings.planets || 0) < 5) app.settings.planets = 5; app.settings.sv = 1; }
+const app = { state: 'loading', paused: false, settings: { difficulty: 'normal', biome: 'earth', seed: 'titan', quality: 'high', planets: 3, style: 'tactical', adaptive: true, reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches, volume: 0.45 }, game: null, ai: null, system: null, fx: null, fxGroup: null };
+try { const s = JSON.parse(localStorage.getItem('ta_v2_settings') || 'null'); if (s) Object.assign(app.settings, s); } catch (e) { }
 if (!['medium', 'high', 'ultra'].includes(app.settings.quality)) app.settings.quality = 'high';
-if (![2, 3, 4, 5].includes(app.settings.planets)) app.settings.planets = 5;
-if (!STYLES.some((s) => s.id === app.settings.style)) app.settings.style = 'polished';
+if (![2, 3, 4, 5].includes(app.settings.planets)) app.settings.planets = 3;
+if (!STYLES.some((s) => s.id === app.settings.style)) app.settings.style = 'tactical';
 window.__app = app;
 
 // ---------- renderer / scene ----------
 const canvas = $('gl'); app.canvas = canvas;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.info.autoReset = false; renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
 setAnisotropy(renderer.capabilities.getMaxAnisotropy());
 app.renderer = renderer;
@@ -50,10 +48,10 @@ const hemi = new THREE.HemisphereLight(0x8fb4ff, 0x3a2a1a, 0.15); scene.add(hemi
 const fill = new THREE.DirectionalLight(0xa8c8ff, 0); fill.castShadow = false; scene.add(fill); scene.add(fill.target);
 const pmrem = new THREE.PMREMGenerator(renderer); scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.5; pmrem.compileCubemapShader();
 // dynamic image-based lighting: a cube capture of the real sky/terrain around the camera anchor, filtered by PMREM
-const envRT = new THREE.WebGLCubeRenderTarget(128, { type: THREE.HalfFloatType, generateMipmaps: false });
+const envRT = new THREE.WebGLCubeRenderTarget(64, { type: THREE.HalfFloatType, generateMipmaps: false });
 const envCam = new THREE.CubeCamera(2, 70000, envRT); envCam.children.forEach((c) => c.layers.enable(1)); let envTarget = null; let envT = -1e9; const _envN = new THREE.Vector3();
 function updateEnvironment(now, force) {
-  const p = cam.planet; if (!p || (!force && now - envT < 4000)) return; envT = now;
+  const p = cam.planet; if (!p || (cam.mode === 'system' && !force) || (!force && now - envT < 12000)) return; envT = now;
   const hid = []; for (const o of [app.fxGroup]) if (o && o.visible) { o.visible = false; hid.push(o); }
   if (unitRenderer) unitRenderer.setVisible(false);
   _envN.copy(cam.anchor).sub(p.center).normalize(); envCam.position.copy(cam.anchor).addScaledVector(_envN, 30);
@@ -76,7 +74,7 @@ const edgePass = new ShaderPass({
   // Ink model. The old one took the second derivative of depth, which is a HAIRLINE: it marks only
   // the one pixel where curvature peaks, so the line came out thin, broken and mushy, and widening it
   // via the sampling radius only made the detector fire on coarser clutter. Instead ask, for every
-  // pixel, "is anything NEARER than me within uWidth pixels?" — the minimum depth over a small disc.
+  // pixel, "is anything NEARER than me within uWidth pixels?" : the minimum depth over a small disc.
   // That paints a solid, even band of exactly uWidth on the far side of every silhouette, which is how
   // a pen actually behaves, and it cannot dash because a minimum over a disc varies continuously.
   // Requiring the step to clear an absolute world-space size is also a far better clutter filter than
@@ -93,7 +91,7 @@ const edgePass = new ShaderPass({
       // silhouette take the ink and every object gets a proper outline against it.
       // Constant screen-space width. A distance taper was tried and is wrong here: this detector inks
       // the pixel whose NEIGHBOUR is nearer, so an object's outline is painted on the background
-      // behind it — and against the sky that background is the far plane at 80000, which pinned the
+      // behind it : and against the sky that background is the far plane at 80000, which pinned the
       // taper to its minimum and drew every silhouette against the sky at 55% width, at any range.
       // The opacity fade below already does the distance dissolve, and it keys off the near surface.
       float wpx = uWidth;
@@ -168,7 +166,7 @@ const TONE = { aces: THREE.ACESFilmicToneMapping, neutral: THREE.NeutralToneMapp
 const _fillDir = new THREE.Vector3();
 app.styleU = STYLE_U; app.passes = { edgePass, gtao, bloom, grade, tiltH, tiltV, composer };
 app.setStyle = (id) => {
-  const st = styleById(id); app.style = st; app.settings.style = st.id; try { localStorage.setItem('ta_settings', JSON.stringify(app.settings)); } catch (e) { }
+  const st = styleById(id); app.style = st; app.settings.style = st.id; try { localStorage.setItem('ta_v2_settings', JSON.stringify(app.settings)); } catch (e) { }
   applyStyleUniforms(st.mat); STYLE_U.uStKey.value = st.light.sun / Math.PI;
   sun.intensity = st.light.sun; sun.color.set(st.light.sunColor); hemi.intensity = st.light.hemi; fill.intensity = st.light.fill; fill.color.set(st.light.fillColor); scene.environmentIntensity = st.light.env;
   const p = st.post; app.bloomBase = p.bloom[0]; bloom.strength = p.bloom[0]; bloom.radius = p.bloom[1]; bloom.threshold = p.bloom[2];
@@ -179,45 +177,60 @@ app.setStyle = (id) => {
   gtao.enabled = app.settings.quality !== 'medium' && p.gtao !== false;
   if (app.system) for (const pl of app.system.planets) { if (!pl.atBase) pl.atBase = { I: pl.uniforms.uAtI.value, K: pl.uniforms.uAtK.value }; pl.uniforms.uAtI.value = pl.atBase.I * st.atmo.sunI; pl.uniforms.uAtK.value = pl.atBase.K * st.atmo.aerial; }
   envT = -1e9; if (app.ui) app.ui.syncStyle();
-  // A style may ask for a different world mesh (Poly drops a subdivision and swaps card foliage for
-  // solid trees). Rebuild for it immediately rather than leaving the player on the wrong mesh: in the
-  // menu that is a regenerate, in a match it restarts the match, which is what picking a look mid-game
-  // is asking for.
-  const wantDetail = (st.world && st.world.detail) || (app.settings.quality === 'medium' ? 7 : 8);
-  const wantCards = !(st.world && st.world.cards === false);
-  if (app.system && app.worldDetail && !app.generating && (wantDetail !== app.worldDetail || wantCards !== app.worldCards)) {
-    if (app.state === 'menu') app.regenPlanet();
-    else { if (app.ui && app.ui.hint) app.ui.hint('Rebuilding the world for ' + st.name); app.startGame(); }
-  }
+  // Mesh layout is fixed for a match. A material choice must never reset player state.
+  if (app.tacticalUI) app.tacticalUI.syncSettings();
 };
 app.cycleStyle = (dir) => { const i = STYLES.findIndex((s) => s.id === (app.style ? app.style.id : app.settings.style)); app.setStyle(STYLES[(i + dir + STYLES.length) % STYLES.length].id); };
 
 
-function applyQuality() {
-  // Render resolution. Until v3.4.1 the composer was never told the pixel ratio, so the whole post
-  // chain ran at CSS resolution and was upscaled — the presets below now actually mean something,
-  // and High is capped under the display's ratio to keep a comfortable frame rate at 4x the pixels.
-  const q = app.settings.quality; const dpr = q === 'medium' ? Math.min(devicePixelRatio, 1) : (q === 'high' ? Math.min(devicePixelRatio, 1.5) : devicePixelRatio);
-  renderer.setPixelRatio(dpr); composer.setPixelRatio(dpr); const sm = q === 'medium' ? 2048 : 4096; setTextureSize(q === 'medium' ? 512 : (q === 'high' ? 768 : 1024));
-  if (sun.shadow.mapSize.x !== sm) { sun.shadow.mapSize.set(sm, sm); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
-  gtao.enabled = q !== 'medium' && !(app.style && app.style.post.gtao === false); resize();
+const QUALITY = {
+  medium: { pixels: 1100000, ratio: 1, shadow: 1024, samples: 0 },
+  high: { pixels: 1900000, ratio: 1.5, shadow: 2048, samples: 2 },
+  ultra: { pixels: 3600000, ratio: 2, shadow: 4096, samples: 4 },
+};
+app.renderScale = 1; app.performance = { fps: 0, frameMs: 16.7, slow: 0, fast: 0 };
+function applyResolution() {
+  const q = QUALITY[app.settings.quality];
+  const dpr = Math.min(devicePixelRatio, q.ratio, Math.sqrt(q.pixels / Math.max(1, innerWidth * innerHeight))) * app.renderScale;
+  renderer.setPixelRatio(dpr); composer.setPixelRatio(dpr); resize();
 }
+function applyQuality() {
+  const q = QUALITY[app.settings.quality]; app.renderScale = 1;
+  for (const rt of [composer.renderTarget1, composer.renderTarget2]) {
+    if (rt.samples !== q.samples) { rt.samples = q.samples; rt.dispose(); }
+  }
+  if (sun.shadow.mapSize.x !== q.shadow) { sun.shadow.mapSize.set(q.shadow,q.shadow); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
+  setTextureSize(app.settings.quality === 'medium' ? 512 : 768);
+  gtao.enabled = app.settings.quality !== 'medium' && !(app.style && app.style.post.gtao === false);
+  applyResolution();
+}
+app.applyQuality = applyQuality;
+function trackFrame(dt) {
+  if (document.hidden || dt <= 0 || dt > 0.5 || app.generating) return;
+  const p = app.performance; p.frameMs += (dt * 1000 - p.frameMs) * 0.06; p.fps = Math.round(1000 / p.frameMs);
+  if (!app.settings.adaptive) return;
+  p.slow = p.frameMs > 27 ? p.slow + dt : 0; p.fast = p.frameMs < 17.7 ? p.fast + dt : 0;
+  if (p.slow > 2.5 && app.renderScale > 0.65) { app.renderScale = Math.max(0.65,app.renderScale - 0.1); p.slow = 0; applyResolution(); }
+  if (p.fast > 8 && app.renderScale < 1) { app.renderScale = Math.min(1,app.renderScale + 0.05); p.fast = 0; applyResolution(); }
+}
+
 function setupSky() {
-  const rng = mulberry32(7); const n = 9000; const p = new Float32Array(n * 3); const c = new Float32Array(n * 3); const s = new Float32Array(n);
-  for (let i = 0; i < n; i++) { const v = new THREE.Vector3(rng() - .5, rng() - .5, rng() - .5).normalize().multiplyScalar(40000); p.set([v.x, v.y, v.z], i * 3); const col = new THREE.Color().setHSL(0.55 + (rng() - .5) * 0.3, 0.5, 0.6 + rng() * 0.4); c.set([col.r, col.g, col.b], i * 3); s[i] = 1 + Math.pow(rng(), 5) * 6; }
+  const rng = mulberry32(7); const n = 2600; const p = new Float32Array(n * 3); const c = new Float32Array(n * 3); const s = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const v = new THREE.Vector3(rng() - .5, rng() - .5, rng() - .5).normalize().multiplyScalar(40000); p.set([v.x, v.y, v.z], i * 3); const col = new THREE.Color().setHSL(0.55 + (rng() - .5) * 0.3, 0.5, 0.6 + rng() * 0.4); c.set([col.r, col.g, col.b], i * 3); s[i] = 0.45 + Math.pow(rng(), 5) * 1.8; }
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('color', new THREE.BufferAttribute(c, 3)); g.setAttribute('aSize', new THREE.BufferAttribute(s, 1));
   const m = new THREE.ShaderMaterial({ vertexColors: true, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending,
     vertexShader: 'attribute float aSize; varying vec3 vC; void main(){ vC = color; vec4 mv = modelViewMatrix*vec4(position,1.0); gl_PointSize = aSize * 1.7; gl_Position = projectionMatrix*mv; }',
     fragmentShader: 'varying vec3 vC; void main(){ vec2 d = gl_PointCoord-0.5; float a = 1.0 - smoothstep(0.08, 0.5, length(d)); gl_FragColor = vec4(vC*a*1.2, a); }' });
   const stars = new THREE.Points(g, m); stars.frustumCulled = false; scene.add(stars);
-  const neb = new THREE.Mesh(new THREE.SphereGeometry(60000, 48, 24), new THREE.MeshBasicMaterial({ map: nebulaTexture(new Simplex(mulberry32(5))), side: THREE.BackSide, depthWrite: false })); neb.renderOrder = -10; neb.frustumCulled = false; scene.add(neb);
+  const neb = new THREE.Mesh(new THREE.SphereGeometry(60000, 48, 24), new THREE.MeshBasicMaterial({ map: nebulaTexture(new Simplex(mulberry32(5))), color: 0x283b49, side: THREE.BackSide, depthWrite: false })); neb.renderOrder = -10; neb.frustumCulled = false; scene.add(neb);
 }
 
 app.atmoU = { uAtC: { value: new THREE.Vector3() }, uAtR: { value: 1 }, uAtRa: { value: 1 }, uAtHr: { value: 1 }, uAtHm: { value: 1 }, uAtI: { value: 0 }, uAtOn: { value: 0 }, uAtBr: { value: new THREE.Vector3() }, uAtBm: { value: 0 }, uAtSun: { value: new THREE.Vector3(0, 0, 1) }, uAtK: { value: 0.1 } };
 let unitRenderer = null;
-const audio = new GameAudio(); app.audio = audio;
-const cam = new PlanetCamera(camera, null, canvas); app.cam = cam;
+const audio = new GameAudio(); app.audio = audio; audio.setVolume(app.settings.volume);
+const cam = new PlanetCamera(camera, null, canvas); app.cam = cam; cam.reducedMotion = app.settings.reducedMotion;
 const ui = new UI(app); app.ui = ui;
+app.tacticalUI = new TacticalUI(app);
 cam.onFocus = (p) => { app.system.setFocus(p); envT = -1e9; hemi.color.setRGB(...p.biome.hemiSky); hemi.groundColor.setRGB(...p.biome.hemiGround); ui.barDirty = true; };
 cam.onSystem = () => { ui.barDirty = true; };
 
@@ -232,9 +245,9 @@ let createWorld = async function () {
   app.system = null; app.fx = null; app.fxGroup = null; cam.system = null; cam.planet = null;
   const s = app.settings; const q = s.quality;
   const stWorld = (app.style && app.style.world) || (styleById(app.settings.style).world) || {};
-  const detailMain = stWorld.detail || (q === 'medium' ? 7 : 8); app.worldDetail = detailMain;
-  setPropCards(stWorld.cards !== false); app.worldCards = stWorld.cards !== false;
-  const system = new StarSystem({ seed: hashString(String(s.seed || 'titan')), biome: s.biome, planetCount: s.planets, quality: q, detailMain, detailOther: Math.min(detailMain, q === 'ultra' ? 7 : 6) });
+  const detailMain = 7; app.worldDetail = detailMain;
+  setPropCards(false); app.worldCards = false;
+  const system = new StarSystem({ seed: hashString(String(s.seed || 'titan')), biome: s.biome, planetCount: s.planets, quality: q, detailMain, detailOther: 6 });
   await system.generateAsync((msg) => { $('loadingText').textContent = msg.toUpperCase(); }); scene.add(system.group);
   app.system = system; cam.system = system; cam.planet = system.planets[0];
   app.fxGroup = new THREE.Group(); scene.add(app.fxGroup);
@@ -257,7 +270,7 @@ createWorld = async function () {
 };
 app.focusPlanet = (planet, dir, dist) => { cam.focus(planet, dir, dist); };
 app.regenPlanet = async () => { if (app.generating) return; $('loadingText').textContent = 'FORGING SYSTEM'; applyQuality(); await createWorld(); setupMenuCamera(); };
-function setupMenuCamera() { const p = app.system.planets[0]; cam.mode = 'planet'; cam.planet = p; cam.blend = 0; cam.setAnchor(p.spawns[0].dir.clone()); cam.dist = 820; cam.targetDist = 820; cam.spin = 0.03; cam.enabled = false; app.system.setFocus(p); }
+function setupMenuCamera() { const p = app.system.planets[0]; cam.mode = 'planet'; cam.planet = p; cam.blend = 0; cam.setAnchor(p.spawns[0].dir.clone()); cam.dist = 820; cam.targetDist = 820; cam.spin = app.settings.reducedMotion ? 0 : 0.012; cam.enabled = false; app.system.setFocus(p); }
 
 app.startGame = async () => {
   if (app.generating) return;
@@ -269,10 +282,10 @@ app.startGame = async () => {
   app.ai = new AI(game, 1, app.settings.difficulty);
   game.spawnCommander(0, main.spawns[0].dir); game.spawnCommander(1, main.spawns[1].dir);
   cam.spin = 0; cam.enabled = true; cam.mode = 'planet'; cam.planet = main; cam.blend = 0;
-  cam.setAnchor(main.spawns[0].dir.clone(), game.facing(0, main, main.spawns[0].dir, new THREE.Vector3())); cam.dist = 700; cam.targetDist = 110; app.system.setFocus(main);
-  app.introT = 4.5; app.overShown = false;
+  cam.setAnchor(main.spawns[0].dir.clone(), game.facing(0, main, main.spawns[0].dir, new THREE.Vector3())); cam.dist = app.settings.reducedMotion ? 95 : 330; cam.targetDist = 95; app.system.setFocus(main);
+  acc = 0; simTime = 0; app.introT = app.settings.reducedMotion ? 0 : 2.2; app.overShown = false;
   app.state = 'playing'; app.paused = false; $('hud').classList.remove('hidden'); $('pauseTag').classList.add('hidden');
-  audio.init(); audio.resume(); ui.barDirty = true;
+  audio.init(); audio.resume(); ui.barDirty = true; ui.select([game.teams[0].commander]); if (app.tacticalUI) app.tacticalUI.reset();
   ui.alert(`Commander inbound to ${main.name}. Difficulty: ${app.settings.difficulty.toUpperCase()} · ${app.system.planets.length} planets`, 'info', null);
 };
 function onGameOver(winner) { app.state = 'over'; app.overT = 0; app.winner = winner; if (winner === 0) audio.victory(); else audio.defeat(); }
@@ -299,36 +312,48 @@ function resize() {
   // frame rate for no visible gain.
   gtao.setSize(Math.max(2, Math.round(w * pr * 0.55)), Math.max(2, Math.round(h * pr * 0.55)));
 }
-addEventListener('resize', resize);
+addEventListener('resize', applyResolution);
+document.addEventListener('visibilitychange', () => { last = performance.now(); acc = 0; if (document.hidden && !app.testHarness && app.state === 'playing' && !app.paused) app.togglePause(); });
 document.addEventListener('pointerdown', () => { audio.init(); audio.resume(); }, { capture: true });
 
 // ---------- render ----------
+const _renderQ = new THREE.Quaternion(), _viewVector = new THREE.Vector3();
 const _m = new THREE.Matrix4(), _tm = new THREE.Matrix4(), _pm = new THREE.Matrix4(), _rm = new THREE.Matrix4(), _pos = new THREE.Vector3(), _one = new THREE.Vector3(1, 1, 1), _sunDir = new THREE.Vector3();
-function renderUnits(time) {
+function renderUnits(time, alpha = 1, dt = 0) {
   const g = app.game; unitRenderer.begin();
   if (g) {
     for (const u of g.units) {
       if (u.dead) continue; if (u.progress <= 0 && u.team !== 0) continue;
-      _pos.copy(u.pos); const prog = (u.progress <= 0) ? 0.04 : u.progress;
-      if (u.def.kind === 'bot' && u.moving) _pos.addScaledVector(u.dir, Math.abs(Math.sin(time * 14 + u.bobPhase)) * 0.12);
-      _m.compose(_pos, u.quat, _one); let tm = null;
-      if (u.def.hasTurret) { const pv = unitRenderer.models[u.def.id].pivot; _pm.makeTranslation(pv[0], pv[1], pv[2]); _rm.makeRotationY(u.turret); tm = _tm.copy(_m).multiply(_pm).multiply(_rm); }
-      unitRenderer.add(u.def.id, _m, TEAM_COLORS[u.team], prog, u.flash, tm, u.team, u.phase || 0, u.recoil || 0, u.moving ? 1 : 0);
+      const dc = camera.position.distanceTo(u.pos);
+      _viewVector.copy(camera.position).sub(u.planet.center);
+      if (!u.transit && u.drop <= 0 && u.dir.dot(_viewVector) < u.planet.R - 20) continue;
+      if (!u.transit && u.drop <= 0 && dc > Math.max(500, u.def.radius * 180)) continue;
+      const interpolate = u.prevPos.distanceToSquared(u.pos) < 10000 && !app.paused;
+      _pos.copy(u.prevPos).lerp(u.pos, interpolate ? alpha : 1);
+      _renderQ.copy(u.prevQuat).slerp(u.quat, interpolate ? alpha : 1);
+      const prog = (u.progress <= 0) ? 0.04 : u.progress;
+      u.visualMotion += ((u.moving ? Math.min(1, u.speed / Math.max(1, u.def.speed) * 1.6) : 0) - u.visualMotion) * (1 - Math.exp(-dt * 14));
+      _m.compose(_pos, _renderQ, _one); let tm = null;
+      if (u.def.hasTurret) { const pv = unitRenderer.models[u.def.id].pivot; _pm.makeTranslation(pv[0], pv[1], pv[2]); _rm.makeRotationY(u.prevTurret + Math.atan2(Math.sin(u.turret - u.prevTurret), Math.cos(u.turret - u.prevTurret)) * (app.paused ? 1 : alpha)); tm = _tm.copy(_m).multiply(_pm).multiply(_rm); }
+      const blend = app.paused ? 1 : alpha;
+      const gait = u.prevPhase + ((u.phase - u.prevPhase + TAU) % TAU) * blend;
+      unitRenderer.add(u.def.id, _m, TEAM_COLORS[u.team], prog, u.flash, tm, u.team, gait, u.prevRecoil + (u.recoil - u.prevRecoil) * blend, u.visualMotion);
     }
   }
   unitRenderer.end();
 }
 let last = performance.now(); let acc = 0; let simTime = 0;
-function frame(now) { requestAnimationFrame(frame); const dt = clamp((now - last) / 1000, 0, 0.1); last = now; advance(dt); }
+function frame(now) { requestAnimationFrame(frame); const raw = (now - last) / 1000; const dt = clamp(raw, 0, 0.1); last = now; trackFrame(raw); if (!document.hidden) advance(dt); }
 function advance(dt, render = true) {
   if (app.generating || !app.system) return;
   const g = app.game;
   if (app.state === 'playing' || app.state === 'over') {
-    if (!app.paused) {
+    if (!app.paused && !g.over) {
       acc += dt; let steps = 0;
-      while (acc >= STEP && steps < 5) { g.step(STEP); if (app.state === 'playing') app.ai.update(STEP); acc -= STEP; steps++; simTime += STEP; }
-      if (steps === 5) acc = 0; app.fx.update(dt);
+      while (acc >= STEP && steps < 8) { g.step(STEP); if (app.state === 'playing') app.ai.update(STEP); acc -= STEP; steps++; simTime += STEP; }
+      if (steps === 8) acc = 0; app.fx.update(dt);
     }
+    if (!app.paused && g.over) app.fx.update(dt);
     if (app.introT > 0) { app.introT -= dt; cam.zoomLerp = 1.4; } else cam.zoomLerp = 9;
     if (app.state === 'over') { app.overT += dt; if (app.overT > 3.5 && !app.overShown) { app.overShown = true; ui.showGameOver(app.winner, g); } }
   } else if (app.fx) app.fx.update(dt);
@@ -336,19 +361,21 @@ function advance(dt, render = true) {
   cam.update(dt); app.system.update(dt, camera);
   cam.planet.updateGrass(cam.anchor, camera.position, simTime + (app.state === 'menu' ? performance.now() / 1000 : 0), cam.mode === 'planet' && cam.dist < 130 && app.state !== 'menu' && !(app.style && app.style.world && app.style.world.grass === false));
   if (!render) return;
-  renderUnits(simTime);
+  renderUnits(simTime, clamp(acc / STEP, 0, 1), dt);
   app.fx.beginFrame(); if (g) g.renderProjectiles(app.fx); if (g && app.state !== 'menu') ui.frame(); app.fx.endFrame();
   const p = cam.planet; _sunDir.copy(p.sunDir);
   { const a = app.atmoU, u = p.uniforms; a.uAtC.value.copy(u.uAtC.value); a.uAtR.value = u.uAtR.value; a.uAtRa.value = u.uAtRa.value; a.uAtHr.value = u.uAtHr.value; a.uAtHm.value = u.uAtHm.value; a.uAtI.value = u.uAtI.value; a.uAtOn.value = 1; a.uAtBr.value.copy(u.uAtBr.value); a.uAtBm.value = u.uAtBm.value; a.uAtSun.value.copy(u.uAtSun.value); a.uAtK.value = u.uAtK.value; }
   sun.position.copy(cam.anchor).addScaledVector(_sunDir, 600); sun.target.position.copy(cam.anchor);
   const s = cam.mode === 'system' ? 700 : clamp(cam.dist * 1.15, 45, 700); const sc = sun.shadow.camera; sc.left = -s; sc.right = s; sc.top = s; sc.bottom = -s; sc.updateProjectionMatrix();
   updateEnvironment(performance.now(), false);
+  sun.castShadow = cam.mode === 'planet' && cam.dist < 600;
   // The painterly styles run a heavy bloom that reads well on a lit surface but turns the star
   // into a white blob from orbit, where the sun sprite and its corona fill the frame.
   bloom.strength = app.bloomBase * (cam.mode === 'system' ? 0.4 : 1);
-  { const now = performance.now() / 1000; STYLE_U.uStTime.value = now; grade.uniforms.uTime.value = now; edgePass.uniforms.uTime.value = now; edgePass.uniforms.uNear.value = camera.near; edgePass.uniforms.uFar.value = camera.far; edgePass.uniforms.uProjInv.value.copy(camera.projectionMatrixInverse); edgePass.uniforms.tDepth.value = composer.readBuffer.depthTexture; // RenderPass draws into readBuffer, and the two targets own separate depth textures
+  { const now = performance.now() / 1000; STYLE_U.uStTime.value = app.state === 'menu' ? (app.settings.reducedMotion ? 0 : now) : simTime; grade.uniforms.uTime.value = now; edgePass.uniforms.uTime.value = now; edgePass.uniforms.uNear.value = camera.near; edgePass.uniforms.uFar.value = camera.far; edgePass.uniforms.uProjInv.value.copy(camera.projectionMatrixInverse); edgePass.uniforms.tDepth.value = composer.readBuffer.depthTexture; // RenderPass draws into readBuffer, and the two targets own separate depth textures
     _fillDir.copy(_sunDir).multiplyScalar(-1).addScaledVector(cam.mode === 'planet' ? cam.normal : _sunDir, 0.9).normalize(); fill.position.copy(cam.anchor).addScaledVector(_fillDir, 600); fill.target.position.copy(cam.anchor); }
-  composer.render();
+  renderer.info.reset(); composer.render();
+  if (app.tacticalUI && g) app.tacticalUI.update(dt);
   if (app.state === 'playing' || app.state === 'over') ui.update(dt);
 }
 app.advance = (sec, fdt = 1 / 30) => { for (let t = 0; t < sec; t += fdt) advance(fdt, false); advance(0.001, true); };
@@ -359,8 +386,8 @@ app.advance = (sec, fdt = 1 / 30) => { for (let t = 0; t < sec; t += fdt) advanc
   $('loadingText').textContent = 'LOADING MATERIALS';
   try { await loadRealTextures(TEX_KINDS, (kind, n) => { $('loadingText').textContent = 'LOADING MATERIALS ' + n + '/' + TEX_KINDS.length; }); } catch (e) { console.warn('texture preload failed, using procedural materials', e); }
   $('loadingText').textContent = 'BUILDING UNITS'; await new Promise((r) => setTimeout(r, 30));
-  { const t0 = performance.now(); unitRenderer = new UnitRenderer(scene, app.atmoU); app.unitRenderer = unitRenderer; app.unitBuildMs = performance.now() - t0; console.info('unit models built in ' + app.unitBuildMs.toFixed(0) + ' ms'); }
+  { const t0 = performance.now(); unitRenderer = new UnitRenderer(scene, app.atmoU); app.unitRenderer = unitRenderer; app.portraits = new ModelPortraits(unitRenderer.models); app.unitBuildMs = performance.now() - t0; console.info('unit models built in ' + app.unitBuildMs.toFixed(0) + ' ms'); }
   await createWorld(); app.setStyle(app.settings.style); setupMenuCamera(); ui.applySettings();
-  $('subtitle').textContent = 'v' + VERSION + ' · Command. Expand. Annihilate.'; $('menu').classList.remove('hidden'); app.state = 'menu';
+  $('subtitle').textContent = 'TACTICAL EDITION / V' + VERSION; $('menu').classList.remove('hidden'); app.state = 'menu';
   requestAnimationFrame(frame);
 })();

@@ -71,7 +71,7 @@ function bakeAO(g, own, spheres, off) {
 function partGeometry(part, idx) {
   const [shape, x, y, z, sx, sy, sz, flags, rx, ry, rz, pvOverride] = part;
   let g;
-  if (shape === 'rbox') { const r = Math.min(0.12, Math.min(sx, sy, sz) * 0.2); g = new RoundedBoxGeometry(sx, sy, sz, 2, r).toNonIndexed(); g.deleteAttribute('uv'); _s.set(1, 1, 1); }
+  if (shape === 'rbox') { const r = Math.min(0.12, Math.min(sx, sy, sz) * 0.2); g = new RoundedBoxGeometry(sx, sy, sz, 2, r); if(g.index)g=g.toNonIndexed(); g.deleteAttribute('uv'); _s.set(1, 1, 1); }
   else { g = baseGeo(shape).clone(); _s.set(sx, sy, sz); }
   edgeAttr(shape, g, flags || '');
   _e.set(rx || 0, ry || 0, rz || 0); _q.setFromEuler(_e); _p.set(x, y, z); _m.compose(_p, _q, _s); g.applyMatrix4(_m);
@@ -79,10 +79,11 @@ function partGeometry(part, idx) {
   // Animation role, baked per part so one instanced draw call can still move its pieces:
   //   1 wheel/roller (rolls about its own X), 2 leg (swings about its top), 3 rotor (spins about Y),
   //   4 barrel (recoils along -Z). aPivot is the point that part turns about.
-  const roleCh = (flags || '').includes('W') ? 1 : ((flags || '').includes('S') ? 2 : ((flags || '').includes('R') ? 3 : ((flags || '').includes('B') ? 4 : 0)));
-  const pvY = pvOverride !== undefined ? pvOverride : (roleCh === 2 ? y + sy * 0.5 : y);
+  const roleCh = (flags || '').includes('A') ? 5 : (flags || '').includes('W') ? 1 : ((flags || '').includes('S') ? 2 : ((flags || '').includes('R') ? 3 : ((flags || '').includes('B') ? 4 : 0)));
+  const pivot = Array.isArray(pvOverride) ? pvOverride : [x, pvOverride !== undefined ? pvOverride : (roleCh === 2 ? y + sy * 0.5 : y), z];
   { const role = new Float32Array(n), piv = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) { role[i] = roleCh; piv[i * 3] = x; piv[i * 3 + 1] = pvY; piv[i * 3 + 2] = z; }
+    for (let i = 0; i < n; i++) { role[i] = roleCh; piv[i * 3] = pivot[0]; piv[i * 3 + 1] = pivot[1]; piv[i * 3 + 2] = pivot[2]; }
+    const joints = new Float32Array(n * 4); const joint = part[12] || [0,0,0,0]; for(let i=0;i<n;i++) joints.set(joint,i*4); g.setAttribute('aJR', new THREE.BufferAttribute(joints,4));
     g.setAttribute('aRole', new THREE.BufferAttribute(role, 1)); g.setAttribute('aPivot', new THREE.BufferAttribute(piv, 3)); }
   const f = flags || ''; let c = COLORS.base; if (f.includes('d')) c = COLORS.d; else if (f.includes('l')) c = COLORS.l; else if (f.includes('k')) c = COLORS.k;
   const v = 0.9 + 0.2 * (((idx * 7) % 5) / 4); const isTeam = f.includes('t') ? 1 : 0; const gl = f.includes('G') ? 2.2 : (f.includes('g') ? 1.0 : 0);
@@ -113,20 +114,25 @@ export function buildModel(def) {
     for (const k of ['aTeam', 'aGlow', 'aHeight', 'aAO', 'aRole', 'aPivot']) geo.deleteAttribute(k);
   };
   packVerts(bodyGeo); if (turretGeo) packVerts(turretGeo);
+  for (const g of [...body,...turret]) g.dispose();
   bodyGeo.computeBoundingSphere(); if (turretGeo) turretGeo.computeBoundingSphere();
   return { body: bodyGeo, turret: turretGeo, height: maxY, pivot };
 }
-// The animation runs in the vertex shader, so anything that also needs the animated pose — the
-// shadow (depth) pass, and the shading normal — has to run the exact same maths. Share one source of
+// The animation runs in the vertex shader, so anything that also needs the animated pose : the
+// shadow (depth) pass, and the shading normal : has to run the exact same maths. Share one source of
 // truth rather than three drifting copies.
 const ANIM_ATTRS = `
-        attribute vec4 aVA; attribute vec4 aPR; attribute vec3 aMot; uniform float uStTime;
+        attribute vec4 aVA; attribute vec4 aPR; attribute vec4 aJR; attribute vec3 aMot; uniform float uStTime;
         #define aRole aPR.w
         #define aPivot aPR.xyz
+        float taCycle() { return aMot.x + (aPivot.x < 0.0 ? 3.14159 : 0.0); }
+        float taKnee() { return aRole > 1.5 && aRole < 2.5 ? max(0.0,-sin(taCycle())) * 0.7 * aMot.z * aJR.w : 0.0; }
+        float taHip() { return sin(taCycle()) * 0.42 * aMot.z; }
         float taAng() {
           if (aRole < 1.5) return aMot.x;
-          if (aRole < 2.5) return sin(aMot.x + (aPivot.x < 0.0 ? 3.14159 : 0.0) + aPivot.z * 2.0) * 0.5 * aMot.z;
+          if (aRole < 2.5) return taHip() + taKnee();
           if (aRole < 3.5) return uStTime * 26.0;
+          if (aRole > 4.5) return -sin(taCycle()) * 0.16 * aMot.z;
           return 0.0;
         }
         vec3 taRotX(vec3 v, float a) { return vec3(v.x, v.y * cos(a) - v.z * sin(a), v.y * sin(a) + v.z * cos(a)); }
@@ -134,16 +140,21 @@ const ANIM_ATTRS = `
 const ANIM_POS = `
         if (aRole > 0.5) {
           float ang = taAng(); vec3 rel = transformed - aPivot;
-          if (aRole < 2.5) transformed = aPivot + taRotX(rel, ang);
+          if (aRole < 1.5) transformed = aPivot + taRotX(rel, ang);
+          else if (aRole < 2.5) {
+            vec3 lower = aJR.xyz + taRotX(transformed - aJR.xyz,taKnee());
+            transformed = aPivot + taRotX(lower - aPivot,taHip());
+          }
           else if (aRole < 3.5) transformed = aPivot + taRotY(rel, ang);
-          else transformed.z -= aMot.y * 0.42;
+          else if (aRole < 4.5) transformed.z -= aMot.y * 0.42;
+          else { transformed = aPivot + taRotX(rel,ang); transformed.z -= aMot.y * aJR.w * 0.18; }
         }`;
 // Rotating the position without rotating the normal leaves a swinging leg lit as though it never
 // moved, which reads as a flat, dead limb however far it travels.
 const ANIM_NRM = `
-        if (aRole > 0.5 && aRole < 3.5) {
+        if (aRole > 0.5 && (aRole < 3.5 || aRole > 4.5)) {
           float ang2 = taAng();
-          objectNormal = aRole < 2.5 ? taRotX(objectNormal, ang2) : taRotY(objectNormal, ang2);
+          objectNormal = (aRole < 2.5 || aRole > 4.5) ? taRotX(objectNormal, ang2) : taRotY(objectNormal, ang2);
         }`;
 /** Depth material matching the animated pose, so shadows swing with the parts that cast them. */
 function animDepthMaterial() {
@@ -172,10 +183,10 @@ export function makeUnitMaterial(atmoU) {
         #define aGlow aVA.y
         #define aHeight aVA.z
         #define aAO aVA.w
-        varying float vTeam; varying float vGlow; varying float vHeight; varying vec3 vTeamColor; varying vec3 vInst; varying vec3 vObj; varying vec3 vObjN; varying vec3 vR0; varying vec3 vR1; varying vec3 vR2; varying float vAO; varying float vEdge;`)
+        varying vec2 vPartMotion; varying float vTeam; varying float vGlow; varying float vHeight; varying vec3 vTeamColor; varying vec3 vInst; varying vec3 vObj; varying vec3 vObjN; varying vec3 vR0; varying vec3 vR1; varying vec3 vR2; varying float vAO; varying float vEdge;`)
       .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>` + ANIM_NRM)
       .replace('#include <begin_vertex>', `#include <begin_vertex>` + ANIM_POS + `
-        vTeam = aTeam; vGlow = aGlow; vHeight = aHeight; vTeamColor = aTeamColor; vInst = aInst; vObj = position; vObjN = normal; vAO = aAO; vEdge = aEdge;
+        vPartMotion = vec2(taAng(),aRole); vTeam = aTeam; vGlow = aGlow; vHeight = aHeight; vTeamColor = aTeamColor; vInst = aInst; vObj = position; vObjN = normal; vAO = aAO; vEdge = aEdge;
         #ifdef USE_INSTANCING
         vR0 = instanceMatrix[0].xyz; vR1 = instanceMatrix[1].xyz; vR2 = instanceMatrix[2].xyz;
         #else
@@ -184,7 +195,7 @@ export function makeUnitMaterial(atmoU) {
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform sampler2D tPanel; uniform sampler2D tPanelN;
-        varying float vTeam; varying float vGlow; varying float vHeight; varying vec3 vTeamColor; varying vec3 vInst; varying vec3 vObj; varying vec3 vObjN; varying vec3 vR0; varying vec3 vR1; varying vec3 vR2; varying float vAO; varying float vEdge;`)
+        varying vec2 vPartMotion; varying float vTeam; varying float vGlow; varying float vHeight; varying vec3 vTeamColor; varying vec3 vInst; varying vec3 vObj; varying vec3 vObjN; varying vec3 vR0; varying vec3 vR1; varying vec3 vR2; varying float vAO; varying float vEdge;`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         if (vInst.x < 1.0 && vHeight > vInst.x) discard;
         vec3 an = abs(normalize(vObjN)); vec3 pw = an * an * an * an; pw /= (pw.x + pw.y + pw.z);
@@ -192,8 +203,8 @@ export function makeUnitMaterial(atmoU) {
         vec3 pnc = texture2D(tPanel, pp.zy, uStLod).rgb * pw.x + texture2D(tPanel, pp.xz, uStLod).rgb * pw.y + texture2D(tPanel, pp.xy, uStLod).rgb * pw.z; float pnl = dot(pnc, vec3(0.333));
         float prg = (texture2D(tPanelN, pp.zy, uStLod).a * pw.x + texture2D(tPanelN, pp.xz, uStLod).a * pw.y + texture2D(tPanelN, pp.xy, uStLod).a * pw.z - 0.3) / 0.7;
         float pnh = (texture2D(tPanel, pp.zy, uStLod).a * pw.x + texture2D(tPanel, pp.xz, uStLod).a * pw.y + texture2D(tPanel, pp.xy, uStLod).a * pw.z - 0.3) / 0.7;
-        diffuseColor.rgb = mix(diffuseColor.rgb, vTeamColor * 0.9, vTeam);
-        diffuseColor.rgb *= (0.62 + 0.75 * pnl) * (0.8 + 0.2 * pnh);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vTeamColor * 1.08, vTeam);
+        diffuseColor.rgb *= (0.8 + 0.36 * pnl) * (0.93 + 0.07 * pnh);
         float wear = vEdge * smoothstep(0.3, 0.75, pnl * 0.8 + vEdge * 0.5);
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.62, 0.6, 0.57) * (0.7 + 0.6 * pnl), wear * 0.85);
         diffuseColor.rgb *= 0.5 + 0.5 * vAO;
@@ -202,7 +213,7 @@ export function makeUnitMaterial(atmoU) {
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         roughnessFactor = clamp(mix(0.3, 0.4, vTeam) + 0.5 * prg + (1.0 - smoothstep(0.0, 0.4, vHeight)) * 0.25, 0.15, 0.95); roughnessFactor = mix(roughnessFactor, 0.3, wear * 0.8);`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
-        metalnessFactor = mix(mix(0.8, 0.35, vTeam), 0.92, wear * 0.8);`)
+        metalnessFactor = mix(mix(0.62, 0.18, vTeam), 0.8, wear * 0.8);`)
       .replace('#include <aomap_fragment>', `
         reflectedLight.indirectDiffuse *= 0.35 + 0.65 * vAO;
         #if defined( USE_ENVMAP ) && defined( STANDARD )
@@ -213,22 +224,25 @@ export function makeUnitMaterial(atmoU) {
         vec3 ux = texture2D(tPanelN, pp.zy, uStLod).xyz * 2.0 - 1.0; vec3 uy = texture2D(tPanelN, pp.xz, uStLod).xyz * 2.0 - 1.0; vec3 uz = texture2D(tPanelN, pp.xy, uStLod).xyz * 2.0 - 1.0;
         ux = vec3(ux.xy + uon.zy, abs(ux.z) * uon.x); uy = vec3(uy.xy + uon.xz, abs(uy.z) * uon.y); uz = vec3(uz.xy + uon.xy, abs(uz.z) * uon.z);
         vec3 unb = normalize(mix(uon, normalize(ux.zyx * pw.x + uy.xzy * pw.y + uz.xyz * pw.z), 0.55));
+        float pa = vPartMotion.x;
+        if (vPartMotion.y > 0.5 && (vPartMotion.y < 2.5 || vPartMotion.y > 4.5)) unb = vec3(unb.x,unb.y*cos(pa)-unb.z*sin(pa),unb.y*sin(pa)+unb.z*cos(pa));
+        else if (vPartMotion.y > 2.5 && vPartMotion.y < 3.5) unb = vec3(unb.x*cos(pa)+unb.z*sin(pa),unb.y,-unb.x*sin(pa)+unb.z*cos(pa));
         mat3 urot = mat3(normalize(vR0), normalize(vR1), normalize(vR2));
         normal = normalize((viewMatrix * vec4(urot * unb, 0.0)).xyz);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-        totalEmissiveRadiance += vTeamColor * vGlow * 1.4;
+        totalEmissiveRadiance += vTeamColor * vGlow * 0.65;
         float edge = (vInst.x < 1.0) ? (1.0 - smoothstep(0.0, 0.06, vInst.x - vHeight)) : 0.0;
         totalEmissiveRadiance += vTeamColor * edge * 1.8 + vec3(1.0) * vInst.y * 1.2;`);
   };
-  mat.customProgramCacheKey = () => 'unitmat_v7';
-  if (atmoU) injectFog(mat, atmoU, 'unitmat_v7');
+  mat.customProgramCacheKey = () => 'unitmat_v2_rig';
+  if (atmoU) injectFog(mat, atmoU, 'unitmat_v2_rig');
   return mat;
 }
 function makeInstanced(geo, cap, material) {
   const g = geo.clone();
   g.setAttribute('aTeamColor', new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3));
   g.setAttribute('aInst', new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3));
-  g.setAttribute('aMot', new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3).setUsage(THREE.DynamicDrawUsage)); // phase, recoil, moving — rewritten every frame
+  g.setAttribute('aMot', new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3).setUsage(THREE.DynamicDrawUsage)); // phase, recoil, moving : rewritten every frame
   const mesh = new THREE.InstancedMesh(g, material, cap);
   mesh.count = 0; mesh.frustumCulled = false; mesh.castShadow = true; mesh.receiveShadow = true; mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   // Without this the shadow pass renders the rest pose, so a walking bot drags a rigid silhouette.
@@ -248,15 +262,31 @@ export class UnitRenderer {
   }
   setVisible(v) { for (const id in this.types) { const t = this.types[id]; t.body.visible = v; if (t.turret) t.turret.visible = v; } }
   begin() { for (const id in this.types) this.types[id].n = 0; }
+  grow(t) {
+    const cap = t.cap * 2;
+    for (const key of ['body','turret']) {
+      const old=t[key]; if(!old)continue;
+      const mesh=makeInstanced(t.model[key],cap,this.material);
+      mesh.instanceMatrix.array.set(old.instanceMatrix.array);
+      for(const name of ['aTeamColor','aInst','aMot'])mesh.geometry.getAttribute(name).array.set(old.geometry.getAttribute(name).array);
+      this.scene.remove(old);old.geometry.dispose();old.customDepthMaterial.dispose();old.dispose();this.scene.add(mesh);t[key]=mesh;
+    }
+    t.cap=cap;
+    for(const [prefix,key] of [['b','body'],['t','turret']])if(t[key]){
+      t[prefix+'Team']=t[key].geometry.getAttribute('aTeamColor');t[prefix+'Inst']=t[key].geometry.getAttribute('aInst');t[prefix+'Mot']=t[key].geometry.getAttribute('aMot');
+    }
+  }
   add(defId, matrix, teamColor, progress, flash, turretMatrix, team = 0, phase = 0, recoil = 0, moving = 0) {
-    const t = this.types[defId]; if (!t || t.n >= t.cap) return; const i = t.n++;
+    const t = this.types[defId]; if (!t) return; if(t.n>=t.cap)this.grow(t); const i = t.n++;
     t.body.setMatrixAt(i, matrix); t.bTeam.setXYZ(i, teamColor[0], teamColor[1], teamColor[2]); t.bInst.setXYZ(i, progress, flash, team); t.bMot.setXYZ(i, phase, recoil, moving);
     if (t.turret) { t.turret.setMatrixAt(i, turretMatrix || matrix); t.tTeam.setXYZ(i, teamColor[0], teamColor[1], teamColor[2]); t.tInst.setXYZ(i, progress, flash, team); if (t.tMot) t.tMot.setXYZ(i, phase, recoil, moving); }
   }
   end() {
     for (const id in this.types) {
-      const t = this.types[id]; t.body.count = t.n; t.body.instanceMatrix.needsUpdate = true; t.bTeam.needsUpdate = true; t.bInst.needsUpdate = true; t.bMot.needsUpdate = true;
-      if (t.turret) { t.turret.count = t.n; t.turret.instanceMatrix.needsUpdate = true; t.tTeam.needsUpdate = true; t.tInst.needsUpdate = true; if (t.tMot) t.tMot.needsUpdate = true; }
+      const t = this.types[id]; t.body.count = t.n; t.body.visible = t.n > 0;
+      const upload = (a, size) => { if (!a || !t.n) return; a.clearUpdateRanges(); a.addUpdateRange(0,t.n*size); a.needsUpdate = true; };
+      upload(t.body.instanceMatrix,16); upload(t.bTeam,3); upload(t.bInst,3); upload(t.bMot,3);
+      if (t.turret) { t.turret.count = t.n; t.turret.visible = t.n > 0; upload(t.turret.instanceMatrix,16); upload(t.tTeam,3); upload(t.tInst,3); upload(t.tMot,3); }
     }
   }
   createGhost(defId) {

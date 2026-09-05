@@ -329,6 +329,36 @@ export const BUILD_TABS = [
 for (const id in D) {
   const d = D[id];
   if (!d.model && d.parts) d.model = d.parts;
+  if (d.kind === 'commander') {
+    d.model = d.model.map(p => { const q = p.slice(); if (q[0] === 'box' && Math.min(q[4],q[5],q[6]) > 0.22) q[0] = 'rbox'; return q; });
+    d.model.push(P('rbox',0,3.35,0.95,1.3,0.48,0.18,'t'), P('box',0,3.35,1.055,0.9,0.075,0.03,'G'));
+    for (const side of [-1,1]) {
+      d.model.push(P('rbox',side*0.77,1.42,0.52,0.66,0.6,0.2,'t'),P('cylx',side*0.77,1.16,0,0.82,0.4,0.4,'l'));
+    }
+  }
+  const walker = d.kind === 'bot' || d.kind === 'commander' || d.id === 'ares';
+  if (walker) {
+    const scale = d.kind === 'bot' ? d.height / 1.9 : 1;
+    const hip = d.kind === 'bot' ? 1.0 * scale : d.kind === 'commander' ? 2.0 : 7.0;
+    const legX = d.kind === 'bot' ? 0.32 * scale : d.kind === 'commander' ? 0.75 : 3.2;
+    for (const part of d.model) {
+      if (part[2] < hip && Math.abs(part[1]) > legX * 0.5 && Math.abs(part[1]) < legX * 1.7) {
+        part[7] = (part[7] || '').replace('S','') + 'S'; part[11] = [Math.sign(part[1]) * legX,hip,0];
+        if (part[2] < hip * 0.55) part[12] = [Math.sign(part[1]) * legX,hip*0.55,0,1];
+      }
+      if (d.kind === 'commander' && Math.abs(part[1]) > 1.2 && part[2] > 2) {
+        part[7] += 'A'; part[11] = [Math.sign(part[1])*1.55,3.75,0];
+        if (part[0] === 'cylz' && part[3] > 0.5) part[12] = [0,0,0,1];
+      }
+    }
+  }
+  if (d.kind === 'vehicle') for(const p of d.model) {
+    if (p[0] === 'cylx') p[7] += p[7].includes('W') ? '' : 'W';
+    if (p[0] === 'cylz' && p[7].includes('u') && p[3] > 0) p[7] += p[7].includes('B') ? '' : 'B';
+  }
+  if (d.factory) {
+    const w=d.radius; d.model.push(P('box',-w*.32,0.36,w*.62,w*.1,0.035,0.65,'t'),P('box',w*.32,0.36,w*.62,w*.1,0.035,0.65,'t'));
+  }
   if (d.speed === undefined) d.speed = 0;
   if (d.turn === undefined) d.turn = 2;
   if (d.height === undefined) d.height = 3;
