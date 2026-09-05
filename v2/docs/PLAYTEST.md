@@ -66,3 +66,8 @@ Tactical v2:
 5. **Separate feature tracks.** Fog of war, match saves, multiplayer and touch controls each need their own design and tests. They are not implemented in this edition.
 
 Raw results: [regression](evidence/v2-regression.json), [full v2 match](evidence/v2-full-match.json), [original full match](evidence/baseline-full-match.json), [original benchmark](evidence/baseline-benchmark.json), [v2 benchmark](evidence/v2-benchmark.json), [UI audit](evidence/v2-ui-audit.json).
+
+## Published verification
+
+GitHub Pages completed deployment of main commit 152c7d2. The live default three-world game passed 38 regression checks with zero failures and zero console errors. HTTP 200 responses for both game URLs matched their local HTML payloads after line-ending normalization. The original root game remains unchanged. The local five-world run has two additional planet inspection checks, accounting for its total of 40.
+

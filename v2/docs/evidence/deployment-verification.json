@@ -1,0 +1,20 @@
+{
+  "commit": "152c7d22dafacd7711fb1fefc35bfe65c51446c2",
+  "pagesStatus": "built",
+  "files": [
+    {
+      "url": "https://majieddd.github.io/titan-annihilation/",
+      "status": 200,
+      "matchesLocal": true,
+      "sha256": "a250a3f3f15d0561fc9eac01d4cacc1c9978c8d7498d6024b9d80c6de5f8fb9a",
+      "bytes": 4135679
+    },
+    {
+      "url": "https://majieddd.github.io/titan-annihilation/v2/",
+      "status": 200,
+      "matchesLocal": true,
+      "sha256": "2eaa11e1de7eff9ee499c49d1631c02ffde6fc7cfdb9b7860923b86d9860cf9d",
+      "bytes": 474187
+    }
+  ]
+}
