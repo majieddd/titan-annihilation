@@ -95,20 +95,28 @@ Menu: mission summary, difficulty and launch, advanced setup collapsed. In play:
 6. Run regression, compare renders, publish v2 and repeat on GitHub Pages.
 
 ## Verification
-tests/browser.html runs the actual game and reports visible JSON assertions. Full match uses AI on both teams with real economic and combat rules. Combat end test uses real weapon damage. Functional regression covers construction, repair, queue, movement, travel, death, pause and style preservation. Benchmark samples requestAnimationFrame separately from the clamped simulation clock. Manual play covers selection and construction.
+tests/browser.html runs the actual game and reports visible JSON assertions. Full match uses AI on both teams with real economic and combat rules. The release bundle passed 40 checks covering construction, repair, queue, movement, travel, death, pause, settings, rendering capacity and style preservation. Benchmark uses 120 warmed synchronous render samples with GPU completion at 1280x720, five worlds, high quality and fixed resolution. Browser occlusion throttles requestAnimationFrame in this environment, so the report makes no monitor FPS claim. Manual play covers landing, selection and construction. PLAYTEST.md and evidence/ contain the results and before/after battlefield frames.
 
 ## Decided
 | Decision | Status | Evidence |
 |---|---|---|
-| Preserve original root | in game | v2 has independent source; git diff limited to v2 |
-| Tactical direction | partial | Owner selected tactical sci-fi in conversation |
-| Repair and onboarding | not yet | |
-| Interpolated animation and render budgets | not yet | |
+| Preserve original root | in game | Baseline 9ad79c5 played; release diff restricted to v2 |
+| Tactical direction | in game | Owner selection; evidence/baseline-battle.png and evidence/v2-battle.png |
+| Repair and onboarding | in game | v2-regression.json: repair-restores-with-exact-cost, commander-repair-is-bounded; reviewed mission HUD |
+| Interpolated animation and render budgets | in game | v2-regression.json: interpolation-snapshot-exists, animation-snapshots-are-finite, large-army-batches-grow; v2-benchmark.json |
+| All five worlds and 51 model previews | in game | inspect-world-0 through 4; catalog.html reviewed including all three titans |
+| Compact accessible controls | in game | v2-ui-audit.json; keyboard-visible 2px focus ring, 375/768/1280 layout review |
+| Authored skeletal assets, touch controls and multiplayer | dropped | Outside this procedural browser edition; follow-up priorities in PLAYTEST.md |
 
 ## Task list
 | # | Item | Status | Commit | Check id | Usage |
 |---|---|---|---|---|---|
-| 1 | E2E original | pending | baseline 9ad79c5 | tests/browser.html?baseline | unmeasured |
+| 1 | E2E original | verified | 9ad79c5 | baseline-full-match.json; natural end at 1825.42s | one complete match |
+| 2 | Command, economy and travel fixes | verified | 91921da | v2-regression.json, 40 pass / 0 fail | real simulation and input handlers |
+| 3 | Model and material treatment | verified | 91921da | battlefield captures; catalog.html, 51 models | actual game geometry |
+| 4 | Performance comparison | verified | 91921da | baseline-benchmark.json, v2-benchmark.json | 120 measured frames per build |
+| 5 | Full v2 match | verified | 91921da | v2-full-match.json, natural end at 386.90s | one full release match plus development run |
+| 6 | HUD and keyboard access | verified | 91921da | v2-ui-audit.json | 375/768/1280; native settings dialog |
 
 ## Where we are
-2026-09-05: inspected repository and manually played landing, selection and extractor placement. Confirmed repeated click needed when ghost validation lags input. Found conflicting camera/command keys, style-triggered restart, fixed-rate pose stepping and repeated DOM replacement. Implementation is isolated under v2.
+2026-09-05: tactical edition implemented and tested, isolated under v2. Original and release matches reached natural end states. Release bundle passed 40 regression checks. The visual comparison led to later strategic icon appearance, thinner explosion shockwaves and corrections to compact layouts. Benchmark work fell from 6.57ms to 2.59ms per frame in the controlled opening scene. Publication targets main at /titan-annihilation/v2; the browser smoke check follows the Pages deployment. No mobile input, multiplayer or new imported asset pack is claimed.

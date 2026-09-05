@@ -1,0 +1,49 @@
+{
+  "date": "2026-09-05",
+  "browser": "Chrome on the development host",
+  "widths": [
+    {
+      "width": 375,
+      "bodyScrollWidth": 375,
+      "overflowButtons": [],
+      "commanderBottom": 137.796875,
+      "planetTop": 154
+    },
+    {
+      "width": 768,
+      "bodyScrollWidth": 768,
+      "overflowButtons": [],
+      "commanderBottom": 145.796875,
+      "planetTop": 154
+    },
+    {
+      "width": 1280,
+      "bodyScrollWidth": 1280,
+      "overflowButtons": []
+    }
+  ],
+  "contrast": {
+    "visibleTextSamples": 39,
+    "minimumRatio": 8.760742260893064,
+    "failures": []
+  },
+  "keyboardFocus": {
+    "control": "liveQuality",
+    "focusVisible": true,
+    "outline": "rgb(121, 212, 237) solid 2px"
+  },
+  "catalog": {
+    "models": 51,
+    "titans": [
+      "Ares",
+      "Atlas",
+      "Zeus"
+    ],
+    "consoleErrors": []
+  },
+  "notes": [
+    "Narrow layouts checked with actual iframe viewport dimensions.",
+    "Native game HUD screenshots reviewed in the browser; saved battlefield PNGs contain the WebGL battlefield without HTML HUD.",
+    "An initial narrow layout overlap and three clipped shortcuts were fixed and rechecked."
+  ]
+}

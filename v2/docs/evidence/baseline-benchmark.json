@@ -1,0 +1,1 @@
+{"check":"render-work-benchmark","style":"polished","quality":"high","planets":5,"viewport":[1280,720],"dpr":1,"meanMs":6.570000000173847,"p50":6.4000000059604645,"p95":8.199999995529652,"draw":{"frame":3275,"calls":98,"triangles":11586554,"points":9000,"lines":1285},"geometries":140}

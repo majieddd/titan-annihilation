@@ -1,0 +1,26 @@
+{
+  "check": "full-match",
+  "pass": true,
+  "winner": 0,
+  "seconds": 1825.4166666653352,
+  "units": 411,
+  "wallMs": 339701,
+  "stats": [
+    {
+      "built": 1075,
+      "lost": 767,
+      "killed": 885,
+      "metalMined": 328313.5499999266,
+      "damageDealt": 312836.92585318745,
+      "nukesFired": 1
+    },
+    {
+      "built": 1034,
+      "lost": 978,
+      "killed": 850,
+      "metalMined": 274222.5166663987,
+      "damageDealt": 745056.0965016454,
+      "nukesFired": 0
+    }
+  ]
+}
