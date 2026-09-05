@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Titan Annihilation</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#05080c;--panel:rgba(6,12,18,0.86);--line:rgba(88,190,255,0.35);--line2:rgba(88,190,255,0.7);--txt:#d6ecff;--dim:#7fa3c0;--acc:#39c1ff;--warn:#ff8a2a;--bad:#ff4d4d;--ok:#5cff8a;--metal:#9be7ff;--energy:#ffd15c}
+body{margin:0;background:var(--bg);color:var(--txt);font-family:'Rajdhani','Segoe UI',system-ui,sans-serif;overflow:hidden;font-size:14px;user-select:none;-webkit-user-select:none}
+#app{position:fixed;inset:0;background:var(--bg);overflow:hidden}
+#gl{position:absolute;inset:0;width:100%;height:100%;display:block;outline:none}
+.hidden{display:none!important}
+button{font-family:inherit;color:var(--txt);background:rgba(20,40,60,0.7);border:1px solid var(--line);padding:6px 14px;font-size:15px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;border-radius:2px}
+button:hover{border-color:var(--line2);background:rgba(40,90,130,0.7)}
+button.primary{background:linear-gradient(180deg,#1d7fc0,#0d4f80);border-color:#6cd0ff;color:#fff;font-size:20px;padding:12px 40px;font-family:'Orbitron',sans-serif;letter-spacing:.15em}
+button.primary:hover{background:linear-gradient(180deg,#2a9ae0,#1462a0)}
+.panel{background:var(--panel);border:1px solid var(--line);box-shadow:0 0 0 1px rgba(0,0,0,.6),0 8px 30px rgba(0,0,0,.5);backdrop-filter:blur(6px)}
+#hud{position:absolute;inset:0;pointer-events:none}
+#hud>*{pointer-events:auto}
+#topbar{position:absolute;top:0;left:0;right:0;height:46px;display:flex;align-items:center;gap:18px;padding:0 16px;background:linear-gradient(180deg,rgba(4,10,16,.92),rgba(4,10,16,.6) 80%,transparent);border-bottom:1px solid rgba(88,190,255,.18);pointer-events:none}
+.res{display:flex;align-items:center;gap:8px;min-width:250px}
+.res .lbl{font-weight:700;letter-spacing:.14em;font-size:12px;color:var(--dim)}
+.res .bar{width:110px;height:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);position:relative}
+.res .bar .fill{position:absolute;left:0;top:0;bottom:0;width:50%;transition:width .2s}
+.res.metal .fill{background:var(--metal)}.res.energy .fill{background:var(--energy)}
+.res .val{font-weight:700;font-size:17px;min-width:44px;text-align:right}
+.res.metal .val{color:var(--metal)}.res.energy .val{color:var(--energy)}
+.res .rate{font-size:13px;color:var(--dim);min-width:70px}
+.res .rate.neg{color:var(--warn)}
+.res.stall .lbl{color:var(--bad);animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.35}}
+#clock{font-family:'Orbitron',sans-serif;font-size:16px;letter-spacing:.1em;margin-left:auto;color:#fff}
+#unitCount,#fps{font-size:13px;color:var(--dim);letter-spacing:.08em}
+#alerts{position:absolute;right:14px;top:60px;width:260px;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.alert{background:rgba(6,12,18,.85);border-left:3px solid var(--warn);padding:6px 10px;font-size:13px;letter-spacing:.05em;cursor:pointer;pointer-events:auto;animation:slidein .25s ease-out}
+.alert.info{border-left-color:var(--acc)}.alert.bad{border-left-color:var(--bad)}.alert.good{border-left-color:var(--ok)}
+@keyframes slidein{from{transform:translateX(30px);opacity:0}}
+#bottom{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:flex-end;gap:10px;padding:0 12px 12px;pointer-events:none}
+#bottom>*{pointer-events:auto}
+#selpanel{width:250px;min-height:120px;padding:8px 10px}
+#selTitle{font-weight:700;letter-spacing:.12em;font-size:13px;color:var(--acc);border-bottom:1px solid var(--line);padding-bottom:4px;margin-bottom:6px;text-transform:uppercase}
+#selInfo{font-size:12px;color:var(--dim);line-height:1.35;min-height:16px;margin-bottom:6px}
+#selGrid{display:flex;flex-wrap:wrap;gap:4px}
+.selItem{width:44px;height:44px;position:relative;border:1px solid var(--line);background:rgba(255,255,255,.04);cursor:pointer}
+.selItem:hover{border-color:var(--line2)}
+.selItem canvas{width:100%;height:100%;display:block}
+.selItem .cnt{position:absolute;right:2px;bottom:0;font-size:12px;font-weight:700;color:#fff;text-shadow:0 0 3px #000}
+.hpbar{position:absolute;left:2px;right:2px;bottom:2px;height:3px;background:rgba(0,0,0,.6)}
+.hpbar i{display:block;height:100%;background:var(--ok)}
+#buildpanel{flex:0 0 auto;width:520px;padding:8px 10px}
+#buildTabs{display:flex;gap:4px;margin-bottom:6px}
+#buildTabs button{padding:3px 10px;font-size:12px;letter-spacing:.1em}
+#buildTabs button.active{background:rgba(57,193,255,.25);border-color:var(--acc);color:#fff}
+#buildGrid{display:grid;grid-template-columns:repeat(7,66px);gap:5px;min-height:70px}
+.bbtn{width:66px;height:70px;position:relative;border:1px solid var(--line);background:rgba(255,255,255,.04);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:2px 0 0}
+.bbtn canvas{width:30px;height:30px}
+.bbtn .nm{font-size:9px;letter-spacing:.02em;line-height:1;color:var(--txt);text-transform:uppercase;white-space:normal;text-align:center;max-width:64px;height:18px;overflow:hidden}
+.bbtn .cost{font-size:11px;font-weight:700;color:var(--metal)}
+.bbtn:hover{border-color:var(--line2);background:rgba(57,193,255,.12)}
+.bbtn.active{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+.bbtn.disabled{opacity:.35;cursor:not-allowed}
+.bbtn .cnt{position:absolute;right:2px;top:2px;font-size:11px;font-weight:700;color:#fff;background:rgba(0,0,0,.6);padding:0 3px}
+#queueRow{display:flex;align-items:center;gap:6px;margin-top:6px;min-height:22px}
+#queueRow .qi{width:28px;height:28px;border:1px solid var(--line);position:relative;cursor:pointer}
+#queueRow .qi canvas{width:100%;height:100%}
+#queueRow .qi .prog{position:absolute;left:0;bottom:0;height:3px;background:var(--acc)}
+#queueRow .lbl{font-size:11px;color:var(--dim);letter-spacing:.1em}
+#cmdpanel{width:150px;padding:8px;display:flex;flex-direction:column;gap:5px}
+#cmdpanel button{padding:5px 8px;font-size:12px;text-align:left}
+#cmdpanel button.active{background:rgba(57,193,255,.25);border-color:var(--acc)}
+#cmdpanel .kb{float:right;color:var(--dim);font-size:11px}
+#tooltip{position:absolute;padding:8px 10px;max-width:260px;font-size:13px;line-height:1.35;pointer-events:none;z-index:5}
+#tooltip b{color:var(--acc);letter-spacing:.08em;font-size:14px}
+#tooltip .st{color:var(--dim)}
+#selbox{position:absolute;border:1px solid var(--acc);background:rgba(57,193,255,.12);pointer-events:none}
+#hint{position:absolute;left:50%;transform:translateX(-50%);bottom:190px;font-size:13px;letter-spacing:.12em;color:var(--acc);text-transform:uppercase;pointer-events:none;text-shadow:0 0 6px #000}
+#planetbar{position:absolute;left:50%;transform:translateX(-50%);top:52px;display:flex;gap:4px;flex-wrap:wrap;justify-content:center;max-width:calc(100% - 600px)}
+.pbtn{padding:3px 10px;font-size:12px;letter-spacing:.12em;display:flex;align-items:center;gap:6px}
+.pbtn .sw{width:8px;height:8px;border-radius:50%;display:inline-block;box-shadow:0 0 6px currentColor}
+.pbtn .cnt{color:var(--dim);font-size:11px;letter-spacing:.04em}
+.pbtn.active{background:rgba(57,193,255,.28);border-color:var(--acc);color:#fff}
+.pbtn.threat{border-color:var(--bad);box-shadow:0 0 8px rgba(255,77,77,.4)}
+#modeTag{position:absolute;left:50%;transform:translateX(-50%);top:86px;font-family:'Orbitron',sans-serif;font-size:12px;letter-spacing:.2em;color:var(--warn);pointer-events:none;text-shadow:0 0 8px #000}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+/* menu */
+#menu{position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-start;padding-left:8vw;background:linear-gradient(90deg,rgba(3,7,12,.92) 0%,rgba(3,7,12,.75) 45%,rgba(3,7,12,0) 75%)}
+#menuBox{width:440px}
+#title{font-family:'Orbitron',sans-serif;font-size:44px;font-weight:900;letter-spacing:.12em;line-height:1;color:#fff;text-shadow:0 0 30px rgba(57,193,255,.6)}
+#title small{display:block;font-size:14px;letter-spacing:.5em;color:var(--acc);margin-bottom:6px;font-weight:700}
+#subtitle{color:var(--dim);letter-spacing:.14em;font-size:13px;margin:8px 0 26px;text-transform:uppercase}
+.opt{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.opt label{width:110px;font-size:12px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase}
+.seg{display:flex;gap:2px}
+.seg button{padding:5px 12px;font-size:13px}
+.seg button.active{background:rgba(57,193,255,.28);border-color:var(--acc);color:#fff}
+#optStyle{flex-wrap:wrap;max-width:520px}
+#styleHint{font-size:12px;color:var(--dim);margin:-6px 0 12px 120px;min-height:16px;max-width:520px}
+#styleWrap{position:absolute;left:16px;top:100px;display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.14em;color:var(--dim);background:rgba(4,10,16,.7);padding:4px 8px;border-radius:4px}
+#styleSel{background:rgba(10,20,30,.85);color:#cfe6ff;border:1px solid rgba(120,180,220,.4);padding:4px 8px;font:inherit;font-size:12px;letter-spacing:.08em;text-transform:uppercase;border-radius:3px}
+input[type=text]{font-family:inherit;background:rgba(0,0,0,.5);border:1px solid var(--line);color:var(--txt);padding:5px 8px;font-size:14px;width:120px}
+#launch{margin-top:22px}
+#help{margin-top:26px;font-size:12px;color:var(--dim);line-height:1.6;letter-spacing:.04em}
+#help b{color:var(--txt)}
+#loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(3,7,12,.85);gap:18px}
+#loadingText{font-family:'Orbitron',sans-serif;letter-spacing:.3em;color:var(--acc);font-size:16px}
+.spinner{width:56px;height:56px;border:3px solid rgba(57,193,255,.2);border-top-color:var(--acc);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#gameover{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(3,7,12,.6)}
+#goBox{width:420px;padding:28px 34px;text-align:center}
+#goTitle{font-family:'Orbitron',sans-serif;font-size:36px;font-weight:900;letter-spacing:.14em;margin-bottom:6px}
+#goTitle.win{color:var(--ok);text-shadow:0 0 30px rgba(92,255,138,.5)}#goTitle.lose{color:var(--bad);text-shadow:0 0 30px rgba(255,77,77,.5)}
+#goSub{color:var(--dim);letter-spacing:.14em;margin-bottom:18px;text-transform:uppercase;font-size:13px}
+#goStats{display:grid;grid-template-columns:1fr 1fr;gap:6px 20px;text-align:left;font-size:14px;margin-bottom:22px}
+#goStats span:nth-child(odd){color:var(--dim);letter-spacing:.08em;text-transform:uppercase;font-size:12px}
+#goStats span:nth-child(even){font-weight:700;text-align:right}
+#pauseTag{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);font-family:'Orbitron',sans-serif;font-size:40px;letter-spacing:.4em;color:#fff;text-shadow:0 0 30px var(--acc);pointer-events:none}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+</head>
+<body>
+<div id="app">
+<canvas id="gl" tabindex="0"></canvas>
+<div id="flash"></div>
+<div id="hud" class="hidden">
+  <div id="topbar">
+    <div class="res metal" id="resMetal"><span class="lbl">METAL</span><div class="bar"><div class="fill" id="metalFill"></div></div><span class="val" id="metalVal">0</span><span class="rate" id="metalRate"></span></div>
+    <div class="res energy" id="resEnergy"><span class="lbl">ENERGY</span><div class="bar"><div class="fill" id="energyFill"></div></div><span class="val" id="energyVal">0</span><span class="rate" id="energyRate"></span></div>
+    <div id="clock">0:00</div>
+    <div id="unitCount"></div>
+    <div id="fps"></div>
+  </div>
+  <div id="planetbar"></div>
+  <div id="styleWrap"><span>STYLE</span><select id="styleSel" title="Art style: [ and ] cycle"><option value="polished">Polished Diorama Ink</option><option value="realism">Polished Realism</option><option value="cel">Cel Shaded</option><option value="spiderverse">Spider-Verse</option><option value="comic">Comic 3D</option><option value="bar">Beyond All Reason</option><option value="inksteel">Ink &amp; Steel</option><option value="reliquary">Reliquary</option><option value="coil">The Coil</option><option value="poly">Poly</option><option value="dioramaink">Diorama Ink</option><option value="diorama">Diorama</option></select></div>
+  <div id="modeTag"></div>
+  <div id="alerts"></div>
+  <div id="hint"></div>
+  <div id="bottom">
+    <div id="selpanel" class="panel"><div id="selTitle">No selection</div><div id="selInfo"></div><div id="selGrid"></div></div>
+    <div id="buildpanel" class="panel"><div id="buildTabs"></div><div id="buildGrid"></div><div id="queueRow"></div></div>
+    <div id="cmdpanel" class="panel"></div>
+  </div>
+  <div id="tooltip" class="panel hidden"></div>
+  <div id="selbox" class="hidden"></div>
+  <div id="pauseTag" class="hidden">PAUSED</div>
+</div>
+<div id="menu" class="hidden">
+  <div id="menuBox">
+    <div id="title"><small>PLANETARY WARFARE</small>TITAN<br>ANNIHILATION</div>
+    <div id="subtitle">Command. Expand. Annihilate.</div>
+    <div class="opt"><label>Difficulty</label><div class="seg" id="optDiff"><button data-v="easy">Easy</button><button data-v="normal" class="active">Normal</button><button data-v="hard">Hard</button><button data-v="brutal">Brutal</button></div></div>
+    <div class="opt"><label>Planet</label><div class="seg" id="optBiome"><button data-v="earth" class="active">Terran</button><button data-v="lava">Magma</button><button data-v="ice">Glacial</button><button data-v="desert">Arid</button><button data-v="moon">Barren</button></div></div>
+    <div class="opt"><label>Seed</label><input type="text" id="optSeed" value=""><button id="btnRandom">Randomize</button></div>
+    <div class="opt"><label>Planets</label><div class="seg" id="optPlanets"><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button><button data-v="5" class="active">5</button></div></div>
+    <div class="opt"><label>Quality</label><div class="seg" id="optQuality"><button data-v="medium">Medium</button><button data-v="high" class="active">High</button><button data-v="ultra">Ultra</button></div></div>
+    <div class="opt"><label>Style</label><div class="seg" id="optStyle"><button data-v="polished" class="active">Polished</button><button data-v="realism">Realism</button><button data-v="cel">Cel</button><button data-v="spiderverse">Spider-Verse</button><button data-v="comic">Comic</button><button data-v="bar">BAR</button><button data-v="inksteel">Ink &amp; Steel</button><button data-v="reliquary">Reliquary</button><button data-v="coil">Coil</button><button data-v="poly">Poly</button><button data-v="dioramaink">Diorama Ink</button><button data-v="diorama">Diorama</button></div></div>
+    <div id="styleHint"></div>
+    <button class="primary" id="launch">LAUNCH</button>
+    <div id="help"><b>WASD / drag</b> orbit &nbsp; <b>Wheel</b> zoom (zoom out for the system view) &nbsp; <b>V</b> system view &nbsp; <b>Q/E</b> rotate &nbsp; <b>[ ]</b> art style &nbsp; <b>Ctrl+Del</b> scuttle selection<br><b>Left click / drag</b> select &nbsp; <b>Right click</b> move / attack (any planet) &nbsp; <b>A</b> attack-move &nbsp; <b>S</b> stop &nbsp; <b>N</b> nuke<br><b>Shift</b> queue / multi-place &nbsp; <b>Ctrl+1-9</b> groups &nbsp; <b>H</b> commander &nbsp; <b>Tab</b> idle fabber &nbsp; <b>P</b> pause<br>Orbital launchers build orbital fabbers that fly between planets. Link two teleporters to march ground armies across the system. Nukes hit any planet; anti-nukes stop them.</div>
+  </div>
+</div>
+<div id="loading"><div class="spinner"></div><div id="loadingText">FORGING SYSTEM</div></div>
+<div id="gameover" class="hidden"><div id="goBox" class="panel"><div id="goTitle">VICTORY</div><div id="goSub"></div><div id="goStats"></div><button class="primary" id="btnAgain">PLAY AGAIN</button> <button id="btnMenu" style="margin-left:8px">MAIN MENU</button></div></div>
+</div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

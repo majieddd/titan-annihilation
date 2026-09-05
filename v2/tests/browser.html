@@ -1,0 +1,6 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Titan playtest lab</title>
+<style>body{margin:0;background:#101920;color:#dce8ed;font:14px monospace}header{height:70px;display:flex;gap:12px;align-items:center;padding:0 16px}button,a{color:#dce8ed;background:#263746;border:1px solid #7db6ce;padding:10px}iframe{width:100%;height:calc(100vh - 190px);border:0}pre{margin:0;padding:10px;height:100px;overflow:auto;white-space:pre-wrap}</style>
+<header><b>TITAN / PLAYTEST LAB</b><button id="e2e">Run full match</button><button id="combat">Combat end state</button><button id="suite">Regression suite</button><button id="scene">Battle showcase</button><button id="bench">Benchmark 120 frames</button><span id="status">Booting</span></header>
+<iframe id="game" title="Game under test"></iframe><pre id="results" aria-live="polite"></pre>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+<script type="module" src="browser.js"></script></html>
